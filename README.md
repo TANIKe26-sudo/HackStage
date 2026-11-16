@@ -286,28 +286,39 @@ React NativeとExpoを利用することで、共通のコードベースからi
 - Expo GoをインストールしたiOSまたはAndroid端末、またはAndroidエミュレーター
 - iOSシミュレーターやiOSネイティブビルドを使う場合はmacOSとXcode
 
-### 起動方法
+### 実機で起動する（Expo Go）
+スマートフォンにExpo Goをインストールします。（App StoreやGoogle Playから可能）
 
-リポジトリのルートで、初回のみ依存関係をインストールします。
+リポジトリのルートで依存関係をインストールします。
 
 ```sh
 npm install
 ```
 
-モバイルアプリとAPIを同時に起動します。
+PCとスマートフォンを同じWi-Fiに接続し、リポジトリのルートでExpoを起動します。
 
 ```sh
-npm run dev
+npm run start --workspace mobile -- --lan
 ```
 
-個別に起動する場合：
+ターミナルにQRコードが表示されたら、端末に応じて読み取ります。`http://localhost:8081`をブラウザーで直接開くとJSONが表示されますが、これはExpoの開発サーバー情報です。アプリ画面を開くにはQRコードを使います。
+
+- **Android**：Expo Goを開き、「Scan QR code」を選択
+- **iPhone**：カメラアプリでQRコードを読み取り、Expo Goで開く
+
+iPhoneで開くときは、PCのExpo CLIとExpo Goの両方で同じExpoアカウントにログインしてください。ルートからCLIにログインする場合：
 
 ```sh
-npm run dev:mobile
+npm exec --workspace mobile -- expo login
+```
+
+APIも起動して確認する場合は、別のターミナルで次を実行します。
+
+```sh
 npm run dev:api
 ```
 
-ExpoのQRコードをExpo Goで読み取ると、実機でアプリを確認できます。APIのヘルスチェックは `http://localhost:3000/health` です。実機からAPIへ接続する場合は、`localhost`を開発PCのLAN内IPアドレスに置き換える必要があります。
+現在のモバイル画面は起動確認用の仮画面です。画面を実装すると、変更はExpo Goに自動反映されます。
 
 ### ディレクトリ構成
 
