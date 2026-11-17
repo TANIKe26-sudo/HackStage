@@ -286,8 +286,10 @@ React NativeとExpoを利用することで、共通のコードベースからi
 - Expo GoをインストールしたiOSまたはAndroid端末、またはAndroidエミュレーター
 - iOSシミュレーターやiOSネイティブビルドを使う場合はmacOSとXcode
 
-### 実機で起動する（Expo Go）
+### 画面を実機で確認する（Expo Go）
 スマートフォンにExpo Goをインストールします。（App StoreやGoogle Playから可能）
+
+この手順でモバイル画面を起動できます。ログイン・新規登録のAPI接続は、後述の「ログイン・新規登録も動かす場合」を追加で設定してください。
 
 リポジトリのルートで依存関係をインストールします。
 
@@ -298,7 +300,7 @@ npm install
 PCとスマートフォンを同じWi-Fiに接続し、リポジトリのルートでExpoを起動します。
 
 ```sh
-npm run start --workspace mobile -- --lan
+npm run start --workspace mobile -- --go --lan
 ```
 
 ターミナルにQRコードが表示されたら、端末に応じて読み取ります。`http://localhost:8081`をブラウザーで直接開くとJSONが表示されますが、これはExpoの開発サーバー情報です。アプリ画面を開くにはQRコードを使います。
@@ -306,16 +308,10 @@ npm run start --workspace mobile -- --lan
 - **Android**：Expo Goを開き、「Scan QR code」を選択
 - **iPhone**：カメラアプリでQRコードを読み取り、Expo Goで開く
 
-iPhoneで開くときは、PCのExpo CLIとExpo Goの両方で同じExpoアカウントにログインしてください。ルートからCLIにログインする場合：
+iPhoneでサインインを求められた場合は、PCのExpo CLIとExpo Goで同じExpoアカウントを使います。PCではリポジトリのルートでログインします。
 
 ```sh
 npm exec --workspace mobile -- expo login
-```
-
-APIも起動して確認する場合は、別のターミナルで次を実行します。
-
-```sh
-npm run dev:api
 ```
 
 モバイル画面は`apps/mobile/src/app/`のExpo Routerルートから、`apps/mobile/src/features/`の画面・コンポーネントを呼び出します。変更はExpo Goに自動反映されます。
@@ -369,9 +365,9 @@ npm run typecheck:cloudflare --workspace @nodobito/api
 
 モバイルの認証処理は`apps/mobile/src/features/auth/`にまとめています。Welcome画面からメールアドレスとパスワードで登録・ログインし、登録後は既存のプロフィール入力・撮影画面へ進みます。認証後に`POST /auth/signup`または`POST /auth/login`からセッションを取得し、プロフィールを`PATCH /api/profile`で保存します。セッションはSecureStoreに保管します。画面ルートは`apps/mobile/src/app/`で管理します。
 
-#### Expo Goでの起動（iOS / Android）
+#### ログイン・新規登録も動かす場合（Cloudflare API）
 
-この構成はExpo Goで起動できます。初回だけD1のローカルマイグレーションを適用し、API用の秘密値を設定します。
+Expo Goで画面を見るだけなら、上の「画面を実機で確認する」の手順だけで起動できます。アプリのログイン・新規登録をAPIにつなぐ場合は、先にCloudflareのローカルD1・R2と秘密値を準備します。
 
 ```powershell
 npm run d1:migrate:local --workspace @nodobito/api
@@ -380,7 +376,13 @@ if (-not (Test-Path apps/api/.dev.vars)) { Copy-Item apps/api/.dev.vars.example 
 
 `apps/api/.dev.vars`を開き、`SESSION_SECRET`に32文字以上のランダムな値を設定します。`CONTACT_HASH_KEY`、`DATE_LOCATION_KEY`、`ADMIN_*_KEY`も例の説明に従って設定してください。`SESSION_SECRET`がないと登録・ログイン時にセッションを作れません。`.dev.vars`はローカル専用で、Gitにコミットしないでください。
 
-PCのWi-Fi IPv4アドレスを`ipconfig`で確認し、`apps/mobile/.env.example`を`.env.local`にコピーしてAPI URLを設定します。例としてPCのIPが`10.200.3.200`なら、次の値にします。
+PCのWi-Fi IPv4アドレスを`ipconfig`で確認し、リポジトリのルートで`.env.local`を作成します。
+
+```powershell
+if (-not (Test-Path apps/mobile/.env.local)) { Copy-Item apps/mobile/.env.example apps/mobile/.env.local }
+```
+
+`apps/mobile/.env.local`を開いてAPI URLを設定します。例としてPCのIPが`10.200.3.200`なら、次の値にします。
 
 ```env
 EXPO_PUBLIC_API_BASE_URL=http://10.200.3.200:8787
@@ -394,19 +396,11 @@ npm run dev:cloudflare --workspace @nodobito/api
 
 APIのターミナルは起動したままにします。`apps/api/.dev.vars`を変更した場合は、`Ctrl+C`でAPIを止めてから再起動してください。
 
-**ターミナル2：Expo Go向けに起動**します。
-
-```powershell
-cd apps\mobile
-if (-not (Test-Path .env.local)) { Copy-Item .env.example .env.local }
-npx expo start --go --lan
-```
-
-スマートフォンとPCを同じWi-Fiに接続し、Expo Goアプリ内の「Scan QR code」でターミナルに表示されたQRコードを読み込みます。ポート`8081`が使用中なら、Expoが提案する別ポート（例：`8082`）を選び、そのターミナルのQRコードを使ってください。アプリ起動後、スマートフォンのブラウザで`http://<PCのWi-Fi IPv4>:8787/health/ready`を開き、`{"ok":true,"database":"ready"}`が返ることを確認できます。`.env.local`を変更した後はExpoを再起動します（必要なら`npx expo start --go --lan --clear`）。
+APIを起動したまま、上の「画面を実機で確認する」にあるExpoコマンドを別ターミナルで実行します。Expo Goで表示されたQRコードを読み込んでください。ポート`8081`が使用中なら、Expoが提案する別ポート（例：`8082`）を選びます。アプリ起動後、スマートフォンのブラウザで`http://<PCのWi-Fi IPv4>:8787/health/ready`を開き、`{"ok":true,"database":"ready"}`が返ることを確認できます。`.env.local`を変更した後はExpoを再起動してください。
 
 新規登録はメールアドレスと12〜128文字のパスワードを使い、登録後にプロフィール画面へ進みます。ローカル開発では`--local`のD1を使うため、データはCloudflare Dashboard上のリモートD1ではなくPCに保存されます。
 
-現行の`npm run dev:api`（Express + SQLite）はこれまでのローカル試作用として残してあります。Cloudflare版は別エントリポイント・別DBであり、SQLiteの既存データ移行は自動では行いません。Cloudflareアカウント上のリソース作成・秘密値設定・デプロイは、この作業環境からは実行していません。
+`npm run dev:api`（Express + SQLite）は別のローカル試作APIです。現在のモバイル認証はCloudflare APIへ接続するため、ログイン・新規登録を確認するときは上記のCloudflare手順を使います。Cloudflare版はExpress版と別DBであり、SQLiteの既存データ移行は自動では行いません。Cloudflareアカウント上のリソース作成・秘密値設定・デプロイは、この作業環境からは実行していません。
 
 ### Node.jsローカル試作版
 
