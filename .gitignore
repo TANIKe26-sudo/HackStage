@@ -2,9 +2,12 @@ node_modules/
 apps/*/node_modules/
 apps/mobile/.expo/
 apps/mobile/dist/
+apps/mobile/.env.local
 apps/api/dist/
 apps/api/data/
 apps/api/private/
+apps/api/.dev.vars
+apps/api/.wrangler/
 backups/
 .env
 .env.*

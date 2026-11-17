@@ -332,6 +332,86 @@ apps/
 
 ## バックエンドAPI
 
+### Cloudflare版（D1 + Workers + R2）
+
+Cloudflareで動かすAPI実装は`apps/api/src/cloudflare.ts`です。メールアドレスとパスワードで登録・ログインし、パスワードはPBKDF2でハッシュ化して保存します。APIは期限付きBearerセッションを発行し、アプリはSecureStoreに保存します。メールアドレス確認メールの送信は未実装です。
+
+- Cloudflare D1：ユーザー、プロフィール、いいね、マッチ、会話、日課、安全・運営記録
+- Cloudflare R2：非公開の撮影画像。画像APIが権限と公開同意を確認してから要求時にストリーム配信し、公開URLは発行しません
+- Cloudflare Workers：Hono API、パスワード認証、通知ジョブ、期限切れデータの整理
+
+Cloudflareアカウントでリソースを作成し、D1のIDを設定してからローカル確認します。
+
+```powershell
+npm exec --workspace @nodobito/api -- wrangler d1 create nodobito-db --config apps/api/wrangler.jsonc
+npm exec --workspace @nodobito/api -- wrangler r2 bucket create nodobito-private-captures --config apps/api/wrangler.jsonc
+```
+
+`d1 create`の出力にある`database_id`を`apps/api/wrangler.jsonc`へ設定します。各種秘密値は`.dev.vars`内だけに保存します。
+
+```powershell
+Copy-Item apps/api/.dev.vars.example apps/api/.dev.vars
+```
+
+`SESSION_SECRET`、`CONTACT_HASH_KEY`、`ADMIN_*_KEY`は用途ごとに別々のランダムな値を設定し、`DATE_LOCATION_KEY`には`openssl rand -base64 32`で作った値を使ってください。
+
+```powershell
+npm run d1:migrate:local --workspace @nodobito/api
+npm run dev:cloudflare --workspace @nodobito/api
+npm run typecheck:cloudflare --workspace @nodobito/api
+```
+
+リモートDB適用は`npm run d1:migrate:remote --workspace @nodobito/api`、デプロイは`npm run deploy:cloudflare --workspace @nodobito/api`です。デプロイ前に`wrangler.jsonc`へ本番D1 IDとR2バケット名を設定し、`wrangler secret put`で`SESSION_SECRET`、`CONTACT_HASH_KEY`、`DATE_LOCATION_KEY`、`ADMIN_SAFETY_KEY`、`ADMIN_VERIFICATION_KEY`、`ADMIN_CONTENT_KEY`、`ADMIN_AUDIT_KEY`を登録してください。Expo Pushを使う場合は`EXPO_ACCESS_TOKEN`も登録します。秘密情報をGitへコミットしないでください。
+
+主なAPIは`POST /auth/signup`、`POST /auth/login`、`POST /auth/logout`、`POST /api/captures`、`GET /api/discover`、`POST /api/likes`、`GET/POST /api/matches/:id/messages`、`GET /api/daily`、`POST /api/matches/:id/date-plans`です。管理APIは`x-admin-key`で役割別に制限します。位置情報は双方の確認と共有同意が揃うまで開示されず、暗号化して保存します。連絡先は秘密鍵付きHMACダイジェストのみ保存します。
+
+### モバイル登録（メールアドレス + パスワード + プロフィール）
+
+`apps/mobile/App.tsx`にアプリ内の新規登録・ログイン、プロフィール登録、ログイン状態の復元を実装しています。認証後に`POST /auth/signup`または`POST /auth/login`からセッションを取得し、プロフィールを`PATCH /api/profile`で保存します。セッションはSecureStoreに保管します。
+
+#### Expo Goでの起動（iOS / Android）
+
+Googleログイン用のネイティブモジュールは使わないため、Expo Goから起動できます。初回だけD1のローカルマイグレーションを適用し、API用の秘密値を設定します。
+
+```powershell
+cd C:\github_use\HackStage
+npm run d1:migrate:local --workspace @nodobito/api
+if (-not (Test-Path apps/api/.dev.vars)) { Copy-Item apps/api/.dev.vars.example apps/api/.dev.vars }
+```
+
+`apps/api/.dev.vars`を開き、`SESSION_SECRET`に32文字以上のランダムな値を設定します。`CONTACT_HASH_KEY`、`DATE_LOCATION_KEY`、`ADMIN_*_KEY`も例の説明に従って設定してください。`SESSION_SECRET`がないと登録・ログイン時にセッションを作れません。`.dev.vars`はローカル専用で、Gitにコミットしないでください。
+
+PCのWi-Fi IPv4アドレスを`ipconfig`で確認し、`apps/mobile/.env.example`を`.env.local`にコピーしてAPI URLを設定します。例としてPCのIPが`10.200.3.200`なら、次の値にします。
+
+```env
+EXPO_PUBLIC_API_BASE_URL=http://10.200.3.200:8787
+```
+
+**ターミナル1：APIを起動**（初回マイグレーションで確認が出た場合は`Y`を入力します）。
+
+```powershell
+cd C:\github_use\HackStage
+npm run dev:cloudflare --workspace @nodobito/api
+```
+
+APIのターミナルは起動したままにします。`apps/api/.dev.vars`を変更した場合は、`Ctrl+C`でAPIを止めてから再起動してください。
+
+**ターミナル2：Expo Go向けに起動**します。
+
+```powershell
+cd C:\github_use\HackStage\apps\mobile
+if (-not (Test-Path .env.local)) { Copy-Item .env.example .env.local }
+npx expo start --go --lan
+```
+
+スマートフォンとPCを同じWi-Fiに接続し、Expo Goアプリ内の「Scan QR code」でターミナルに表示されたQRコードを読み込みます。ポート`8081`が使用中なら、Expoが提案する別ポート（例：`8082`）を選び、そのターミナルのQRコードを使ってください。アプリ起動後、スマートフォンのブラウザで`http://<PCのWi-Fi IPv4>:8787/health/ready`を開き、`{"ok":true,"database":"ready"}`が返ることを確認できます。`.env.local`を変更した後はExpoを再起動します（必要なら`npx expo start --go --lan --clear`）。
+
+新規登録はメールアドレスと12〜128文字のパスワードを使い、登録後にプロフィール画面へ進みます。ローカル開発では`--local`のD1を使うため、データはCloudflare Dashboard上のリモートD1ではなくPCに保存されます。
+
+現行の`npm run dev:api`（Express + SQLite）はこれまでのローカル試作用として残してあります。Cloudflare版は別エントリポイント・別DBであり、SQLiteの既存データ移行は自動では行いません。Cloudflareアカウント上のリソース作成・秘密値設定・デプロイは、この作業環境からは実行していません。
+
+### Node.jsローカル試作版
+
 ExpressとNode.jsの`node:sqlite`で開発用APIを実装しています。DBは`apps/api/data/app.sqlite`、画像は公開ディレクトリ外の`apps/api/private/captures/`へ保存します。どちらもGitには登録しません。
 
 起動は`npm run dev:api`、疎通確認は`GET http://localhost:3000/health/ready`です。運営APIを有効にする場合は、`apps/api/.env.example`を参考にリポジトリルートの`.env`を作成し、運営の役割ごとに異なるキーを設定します。各運営APIは`x-admin-key`ヘッダーを要求します。
