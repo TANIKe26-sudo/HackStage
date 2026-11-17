@@ -1,12 +1,16 @@
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AuthButton } from '../components/AuthButton';
+import { CameraIcon } from '../components/CameraIcon';
 import { FormField } from '../components/FormField';
+import { useSignUpDraft } from '../context/SignUpDraftContext';
 import { colors, spacing } from '../../../theme/tokens';
 
 export default function SignUpScreen() {
+  const { profilePhotoUri } = useSignUpDraft();
+
   const handleBack = () => {
     if (router.canGoBack()) {
       router.back();
@@ -35,14 +39,34 @@ export default function SignUpScreen() {
         <Text style={styles.sectionTitle}>基本情報</Text>
 
         <View style={styles.photoCard}>
-          <View style={styles.photoTile}>
-            <View style={styles.cameraBody}>
-              <View style={styles.cameraLens} />
-            </View>
-          </View>
+          {profilePhotoUri ? (
+            <Image
+              accessibilityLabel="撮影したプロフィール写真"
+              source={{ uri: profilePhotoUri }}
+              style={styles.photoTile}
+              resizeMode="cover"
+            />
+          ) : (
+            <Pressable
+              accessibilityLabel="プロフィール写真を撮影"
+              accessibilityRole="button"
+              onPress={() => router.push('/capture-photo')}
+              style={({ pressed }) => [styles.photoTile, pressed && styles.photoTilePressed]}
+            >
+              <CameraIcon size={42} color={colors.primary} />
+            </Pressable>
+          )}
           <View style={styles.photoCopy}>
             <Text style={styles.photoTitle}>プロフィール写真</Text>
-            <Text style={styles.photoAction}>再撮影</Text>
+            {profilePhotoUri ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push('/capture-photo')}
+                style={({ pressed }) => pressed && styles.photoActionPressed}
+              >
+                <Text style={styles.photoAction}>再撮影</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
 
@@ -122,22 +146,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.primarySoft,
     borderRadius: 8,
+    overflow: 'hidden',
   },
-  cameraBody: {
-    width: 30,
-    height: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderColor: colors.primary,
-    borderWidth: 1.5,
-    borderRadius: 5,
+  photoTilePressed: {
+    opacity: 0.78,
   },
-  cameraLens: {
-    width: 10,
-    height: 10,
-    borderColor: colors.primary,
-    borderWidth: 1.5,
-    borderRadius: 5,
+  photoActionPressed: {
+    opacity: 0.65,
   },
   photoCopy: {
     gap: 6,
