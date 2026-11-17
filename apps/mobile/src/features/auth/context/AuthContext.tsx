@@ -78,10 +78,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     });
     if (!result.token) throw new Error('APIからログイン情報を受け取れませんでした。');
 
-    await SecureStore.setItemAsync(SESSION_KEY, result.token);
-    setToken(result.token);
     const current = await apiRequest<{ profile: AuthProfile | null }>('/api/me', result.token);
+    await SecureStore.setItemAsync(SESSION_KEY, result.token);
     setProfile(current.profile);
+    setToken(result.token);
     return current.profile;
   };
 

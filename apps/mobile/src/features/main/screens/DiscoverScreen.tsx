@@ -128,6 +128,7 @@ export default function DiscoverScreen() {
           onTabPress={(tab: MainTabId) => {
             if (tab === 'likes') router.replace('/likes');
             if (tab === 'chat') router.replace('/matches');
+            if (tab === 'profile') router.replace('/profile');
           }}
         />
       </View>
