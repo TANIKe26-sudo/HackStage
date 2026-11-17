@@ -363,7 +363,7 @@ npm run typecheck:cloudflare --workspace @nodobito/api
 
 ### モバイル登録（メールアドレス + パスワード + プロフィール）
 
-モバイルの認証処理は`apps/mobile/src/features/auth/`にまとめています。Welcome画面からメールアドレスとパスワードで登録・ログインし、登録後は既存のプロフィール入力・撮影画面へ進みます。認証後に`POST /auth/signup`または`POST /auth/login`からセッションを取得し、プロフィールを`PATCH /api/profile`で保存します。セッションはSecureStoreに保管します。画面ルートは`apps/mobile/src/app/`で管理します。
+モバイルの認証処理は`apps/mobile/src/features/auth/`にまとめています。未ログイン時はログイン画面から始まり、画面下部のリンクで新規登録へ進みます。登録後はプロフィール入力・撮影画面へ進みます。認証後に`POST /auth/signup`または`POST /auth/login`からセッションを取得し、プロフィールを`PATCH /api/profile`で保存します。セッションはSecureStoreに保管します。画面ルートは`apps/mobile/src/app/`で管理します。
 
 #### ログイン・新規登録も動かす場合（Cloudflare API）
 

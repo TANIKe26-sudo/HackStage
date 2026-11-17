@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -56,32 +56,21 @@ export default function EmailAuthScreen({ mode }: EmailAuthScreenProps) {
     }
   };
 
-  const handleBack = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/');
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
+      <Stack.Screen options={{ animation: 'none', gestureEnabled: false }} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Pressable
-            accessibilityLabel="Welcomeへ戻る"
-            accessibilityRole="button"
-            onPress={handleBack}
-            style={styles.backButton}
-          >
-            <Text style={styles.backLabel}>‹</Text>
-          </Pressable>
-          <Text style={styles.title}>{isSignup ? '新規登録' : 'ログイン'}</Text>
+          <View style={styles.headerSpacer} />
+          <Text style={styles.title}>のどじまん</Text>
           <View style={styles.headerSpacer} />
         </View>
 
         <View style={styles.intro}>
-          <Text style={styles.sectionTitle}>{isSignup ? 'アカウント情報' : 'おかえりなさい'}</Text>
+          <Text style={styles.sectionTitle}>{isSignup ? '新規登録' : 'ログイン'}</Text>
           <Text style={styles.description}>
             {isSignup
-              ? 'メールアドレスとパスワードを登録します。'
+              ? 'メールアドレスとパスワードを登録してください。'
               : '登録したメールアドレスとパスワードを入力してください。'}
           </Text>
         </View>
@@ -135,11 +124,12 @@ export default function EmailAuthScreen({ mode }: EmailAuthScreenProps) {
         <Pressable
           accessibilityRole="button"
           disabled={busy}
-          onPress={() => router.replace(isSignup ? '/login' : '/create-account')}
+          onPress={() => router.replace(isSignup ? '/' : '/create-account')}
           style={styles.switchButton}
         >
           <Text style={styles.switchText}>
-            {isSignup ? 'すでにアカウントをお持ちの方はログイン' : 'アカウントをお持ちでない方は新規登録'}
+            {isSignup ? 'すでにアカウントをお持ちの方は' : 'アカウントをお持ちでない方は'}
+            <Text style={styles.switchLinkText}>{isSignup ? 'ログイン' : '新規登録'}</Text>
           </Text>
         </Pressable>
       </ScrollView>
@@ -164,17 +154,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backLabel: {
-    color: colors.primary,
-    fontSize: 32,
-    lineHeight: 34,
   },
   title: {
     color: colors.text,
@@ -223,5 +202,9 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 12,
     textAlign: 'center',
+  },
+  switchLinkText: {
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });

@@ -80,7 +80,7 @@ export default function SignUpScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <Pressable
-            accessibilityLabel="Welcomeへ戻る"
+            accessibilityLabel="前の画面へ戻る"
             accessibilityRole="button"
             onPress={handleBack}
             style={styles.backButton}
