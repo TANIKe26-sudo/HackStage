@@ -8,9 +8,6 @@ export function DiscoverProfileCard({ profile }: { profile: DiscoverProfile }) {
     <View style={styles.cardContent}>
       <View style={styles.imagePlaceholder}>
         <Text style={styles.noImageLabel}>No image</Text>
-        <View style={styles.verifiedBadge}>
-          <Text style={styles.verifiedLabel}>本人確認済み</Text>
-        </View>
       </View>
 
       <View style={styles.profileInfo}>
@@ -57,21 +54,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     letterSpacing: 0.3,
-  },
-  verifiedBadge: {
-    position: 'absolute',
-    top: spacing.md,
-    left: spacing.md,
-    minHeight: 27,
-    justifyContent: 'center',
-    borderRadius: 15,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-  },
-  verifiedLabel: {
-    color: colors.primary,
-    fontSize: 11,
-    fontWeight: '600',
   },
   profileInfo: {
     minHeight: 88,

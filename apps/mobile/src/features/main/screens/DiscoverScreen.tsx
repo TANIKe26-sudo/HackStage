@@ -1,12 +1,13 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '../../../theme/tokens';
 import { DiscoverEmptyState } from '../components/DiscoverEmptyState';
 import { DiscoverProfileCard } from '../components/DiscoverProfileCard';
 import { DiscoverSwipeActions } from '../components/DiscoverSwipeActions';
-import { MainTabBar } from '../components/MainTabBar';
+import { MainTabBar, type MainTabId } from '../components/MainTabBar';
 import { demoProfiles } from '../data/demoProfiles';
 
 type SwipeDirection = 'like' | 'pass';
@@ -86,10 +87,10 @@ export default function DiscoverScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <View style={styles.screen}>
         <View style={styles.header}>
-          <Text style={styles.brand}>のどぼとけMATCH</Text>
+          <Text style={styles.brand}>のどじまん</Text>
         </View>
 
         <View style={styles.main}>
@@ -122,7 +123,12 @@ export default function DiscoverScreen() {
           )}
         </View>
 
-        <MainTabBar />
+        <MainTabBar
+          activeTab="search"
+          onTabPress={(tab: MainTabId) => {
+            if (tab === 'likes') router.replace('/likes');
+          }}
+        />
       </View>
     </SafeAreaView>
   );
@@ -138,12 +144,13 @@ const styles = StyleSheet.create({
   },
   header: {
     height: 54,
+    alignItems: 'flex-start',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
   },
   brand: {
     color: colors.primary,
-    fontSize: 21,
+    fontSize: 24,
     fontWeight: '500',
     letterSpacing: 0.2,
   },
