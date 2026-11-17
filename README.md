@@ -329,3 +329,39 @@ apps/
 ```
 
 モバイルアプリにはExpo Cameraを追加済みです。権限設定はカメラのみで、写真ライブラリの選択機能・権限は追加していません。撮影専用画面は今後の実装項目です。
+
+## バックエンドAPI
+
+ExpressとNode.jsの`node:sqlite`で開発用APIを実装しています。DBは`apps/api/data/app.sqlite`、画像は公開ディレクトリ外の`apps/api/private/captures/`へ保存します。どちらもGitには登録しません。
+
+起動は`npm run dev:api`、疎通確認は`GET http://localhost:3000/health`です。運営APIを有効にする場合は、`apps/api/.env.example`を参考にリポジトリルートの`.env`を作成し、推測困難な`ADMIN_API_KEY`を設定します。運営APIは`x-admin-key`ヘッダーを要求します。
+
+### API一覧
+
+認証が必要なAPIには`Authorization: Bearer <token>`を付けます。
+
+| 機能 | エンドポイント |
+|---|---|
+| 会員登録・ログイン・ログアウト | `POST /auth/signup`、`POST /auth/login`、`POST /auth/logout`、`GET /auth/me` |
+| 年齢確認・プロフィール | `POST /auth/age-verification`、`POST /profiles`、`GET /profiles/:id` |
+| 撮影画像 | `POST /captures`、`GET /captures/:id/image` |
+| 探す・いいね・マッチ | `GET /discover`、`POST /likes`、`GET /likes/received`、`GET /matches` |
+| トーク | `GET /matches/:id/messages`、`POST /matches/:id/messages` |
+| デイリー | `GET /daily`、`GET /daily/answers`、`POST /daily/answers` |
+| ブロック・通報 | `POST /users/:id/block`、`DELETE /users/:id/block`、`POST /users/:id/reports` |
+| 運営 | `GET /admin/users`、`PATCH /admin/users/:id/status`、`GET /admin/verifications`、`PATCH /admin/users/:id/verification`、`PATCH /admin/users/:id/classification`、`GET/POST/PATCH /admin/daily`、`GET/PATCH /admin/reports`、`GET /admin/image-access` |
+
+主要なリクエスト例：プロフィールは`{ "displayName": "表示名", "age": 25, "area": "東京都", "bio": "自己紹介" }`、年齢確認申請は`{ "adultConfirmed": true }`、いいねは`{ "toUserId": "ユーザーID" }`、デイリー回答は`{ "topicId": "課題ID", "answer": "回答" }`です。撮影登録は`{ "captureSource": "in_app_camera", "stage": 0, "imageData": "data:image/jpeg;base64,..." }`を受け付けます。
+
+段階公開は同じマッチ内で双方がメッセージした日数と、双方が回答した課題数から算出します。相互発言3日で段階1、7日と共同回答1件で段階2、14日と3件で段階3、30日と7件で段階4です。課金による解放はありません。
+
+### 実装範囲と制約
+
+- 年齢確認は申請状態と運営承認を管理します。公的証明書の照合サービスは未接続です。確認用の個人情報と公開プロフィールは別テーブルに分け、証明書画像はこのAPIでは保存しません。
+- 喉仏分類は運営が`present`、`absent`、`pending`を設定します。画像からの自動推定や性別判定は行いません。
+- 画像は非公開保存し、所有者またはマッチ相手に限定して配信します。取得時に公開段階を再確認し、アクセスログを記録します。
+- `captureSource: in_app_camera`はアプリからの申告値です。サーバーだけで画像が端末カメラから来たことは証明できません。
+- ブロック、通報、運営による利用停止、ログインや投稿の回数制限を実装しています。運営画面UI、画像透かし、画像内の不正検出、年齢確認プロバイダーは未実装です。
+- SQLiteはローカル開発用です。Node.jsの`node:sqlite`は同期APIで、実験的機能の警告が出ます。本番運用前にPostgreSQL等のサーバーDB、TLS、秘密情報管理、バックアップ、保持期間、共有レート制限を用意してください。
+
+スクリーンショットをサーバー側だけで完全に防ぐことはできません。画像アクセス制御と記録は補助策です。
