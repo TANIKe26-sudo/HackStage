@@ -20,11 +20,11 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-export function createSession(userId: string): string {
+export function createSession(userId: string, deviceName = ''): string {
   const token = randomBytes(32).toString('base64url');
   const created = new Date();
-  db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at,created_at) VALUES(?,?,?,?)')
-    .run(sha256(token), userId, new Date(created.getTime() + 30 * 86400000).toISOString(), created.toISOString());
+  db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at,created_at,device_name) VALUES(?,?,?,?,?)')
+    .run(sha256(token), userId, new Date(created.getTime() + 30 * 86400000).toISOString(), created.toISOString(), deviceName.slice(0, 80));
   return token;
 }
 
@@ -39,6 +39,16 @@ export function requireAuth(_request: Request, response: Response, next: NextFun
   next();
 }
 
+export function requireAppealAuth(request: Request, response: Response, next: NextFunction): void {
+  const token = request.header('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) { response.status(401).json({ error: '認証が必要です。' }); return; }
+  const session = db.prepare('SELECT user_id AS userId FROM sessions WHERE token_hash=? AND expires_at>?')
+    .get(sha256(token), new Date().toISOString()) as { userId: string } | undefined;
+  if (!session) { response.status(401).json({ error: 'セッションが無効か期限切れです。' }); return; }
+  response.locals.userId = session.userId;
+  next();
+}
+
 export function requireAgeApproved(_request: Request, response: Response, next: NextFunction): void {
   const row = db.prepare('SELECT status FROM age_verifications WHERE user_id=?').get(response.locals.userId) as { status: string } | undefined;
   if (row?.status !== 'approved') {
@@ -46,6 +56,17 @@ export function requireAgeApproved(_request: Request, response: Response, next: 
     return;
   }
   next();
+}
+
+export type LimitScope = 'messaging' | 'discovery' | 'posting';
+export function requireNotLimited(scope: LimitScope) {
+  return (_request: Request, response: Response, next: NextFunction): void => {
+    const limit = db.prepare(`SELECT id,scope,reason,expires_at AS expiresAt FROM user_limits
+      WHERE user_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?)
+      AND (scope='all' OR scope=?) ORDER BY created_at DESC LIMIT 1`).get(response.locals.userId, new Date().toISOString(), scope);
+    if (limit) { response.status(403).json({ error: 'この機能は一時的に制限されています。', restriction: limit }); return; }
+    next();
+  };
 }
 
 const limits = new Map<string, { count: number; resetAt: number }>();
@@ -61,12 +82,23 @@ export function rateLimit(scope: string, max: number, intervalMs: number) {
   };
 }
 
-export function requireAdmin(request: Request, response: Response, next: NextFunction): void {
-  const expected = process.env.ADMIN_API_KEY ?? '';
+export type AdminRole = 'users' | 'verification' | 'content' | 'safety' | 'audit';
+const adminEnv: Record<AdminRole, string> = {
+  users: 'ADMIN_USERS_KEY',
+  verification: 'ADMIN_VERIFICATION_KEY',
+  content: 'ADMIN_CONTENT_KEY',
+  safety: 'ADMIN_SAFETY_KEY',
+  audit: 'ADMIN_AUDIT_KEY',
+};
+
+export function requireAdmin(role: AdminRole) {
+  return (request: Request, response: Response, next: NextFunction): void => {
+  const expected = process.env[adminEnv[role]] ?? '';
   const supplied = request.header('x-admin-key') ?? '';
-  if (!expected) { response.status(503).json({ error: 'ADMIN_API_KEYが未設定のため運営APIは無効です。' }); return; }
+  if (!expected) { response.status(503).json({ error: `${adminEnv[role]}が未設定のため、この運営機能は無効です。` }); return; }
   const a = Buffer.from(expected);
   const b = Buffer.from(supplied);
   if (a.length !== b.length || !timingSafeEqual(a, b)) { response.status(401).json({ error: '運営認証に失敗しました。' }); return; }
   next();
+  };
 }
