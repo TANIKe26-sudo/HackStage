@@ -1,4 +1,4 @@
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -15,7 +15,11 @@ export default function WelcomeScreen() {
         </View>
 
         <View style={styles.actions}>
-          <AuthButton label="ログイン" variant="outline" />
+          <AuthButton
+            label="ログイン"
+            variant="outline"
+            onPress={() => router.replace('/discover')}
+          />
           <Link href="/sign-up" asChild>
             <AuthButton label="新規登録" variant="primary" />
           </Link>
