@@ -9,6 +9,7 @@ export type AuthProfile = {
   conversation_pace: string | null;
   throat_class: 'present' | 'absent' | 'pending';
   age_verification: string;
+  profile_photo_capture_id?: string | null;
 };
 
 type ApiErrorResponse = { error?: string };
@@ -26,7 +27,7 @@ const errorMessages: Record<string, string> = {
   invalid_birth_year: '18歳以上であることを確認できる生年を入力してください。',
 };
 
-function getApiBaseUrl() {
+export function getApiBaseUrl() {
   const extra = Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined;
   const value = extra?.apiBaseUrl || process.env.EXPO_PUBLIC_API_BASE_URL;
   if (!value) {

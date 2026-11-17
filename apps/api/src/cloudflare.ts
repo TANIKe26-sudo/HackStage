@@ -173,7 +173,7 @@ app.post('/auth/logout', async (c) => {
 
 app.get('/api/me', async (c) => {
   const userId = c.get('userId');
-  const profile = await c.env.DB.prepare('SELECT p.*,u.email,u.status,a.status AS age_verification FROM profiles p JOIN users u ON u.id=p.user_id LEFT JOIN age_verifications a ON a.user_id=p.user_id WHERE p.user_id=?').bind(userId).first();
+  const profile = await c.env.DB.prepare("SELECT p.*,u.email,u.status,a.status AS age_verification,(SELECT id FROM captures WHERE owner_id=p.user_id AND stage=0 ORDER BY created_at DESC LIMIT 1) AS profile_photo_capture_id FROM profiles p JOIN users u ON u.id=p.user_id LEFT JOIN age_verifications a ON a.user_id=p.user_id WHERE p.user_id=?").bind(userId).first();
   return c.json({ profile });
 });
 app.patch('/api/profile', async (c) => {
