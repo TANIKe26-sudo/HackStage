@@ -127,6 +127,7 @@ export default function DiscoverScreen() {
           activeTab="search"
           onTabPress={(tab: MainTabId) => {
             if (tab === 'likes') router.replace('/likes');
+            if (tab === 'chat') router.replace('/matches');
           }}
         />
       </View>
