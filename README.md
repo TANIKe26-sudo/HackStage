@@ -318,7 +318,7 @@ APIも起動して確認する場合は、別のターミナルで次を実行�
 npm run dev:api
 ```
 
-現在のモバイル画面は起動確認用の仮画面です。画面を実装すると、変更はExpo Goに自動反映されます。
+モバイル画面は`apps/mobile/src/app/`のExpo Routerルートから、`apps/mobile/src/features/`の画面・コンポーネントを呼び出します。変更はExpo Goに自動反映されます。
 
 ### ディレクトリ構成
 
@@ -328,7 +328,7 @@ apps/
   mobile/    React Native + Expoアプリ（iOS / Android）
 ```
 
-モバイルアプリにはExpo Cameraを追加済みです。権限設定はカメラのみで、写真ライブラリの選択機能・権限は追加していません。撮影専用画面は今後の実装項目です。
+モバイルアプリにはExpo Cameraを追加済みです。新規登録のプロフィール写真はアプリ内カメラで撮影します。写真ライブラリの選択機能・権限は追加していません。
 
 ## バックエンドAPI
 
@@ -367,14 +367,13 @@ npm run typecheck:cloudflare --workspace @nodobito/api
 
 ### モバイル登録（メールアドレス + パスワード + プロフィール）
 
-`apps/mobile/App.tsx`にアプリ内の新規登録・ログイン、プロフィール登録、ログイン状態の復元を実装しています。認証後に`POST /auth/signup`または`POST /auth/login`からセッションを取得し、プロフィールを`PATCH /api/profile`で保存します。セッションはSecureStoreに保管します。
+モバイルの認証処理は`apps/mobile/src/features/auth/`にまとめています。Welcome画面からメールアドレスとパスワードで登録・ログインし、登録後は既存のプロフィール入力・撮影画面へ進みます。認証後に`POST /auth/signup`または`POST /auth/login`からセッションを取得し、プロフィールを`PATCH /api/profile`で保存します。セッションはSecureStoreに保管します。画面ルートは`apps/mobile/src/app/`で管理します。
 
 #### Expo Goでの起動（iOS / Android）
 
-Googleログイン用のネイティブモジュールは使わないため、Expo Goから起動できます。初回だけD1のローカルマイグレーションを適用し、API用の秘密値を設定します。
+この構成はExpo Goで起動できます。初回だけD1のローカルマイグレーションを適用し、API用の秘密値を設定します。
 
 ```powershell
-cd C:\github_use\HackStage
 npm run d1:migrate:local --workspace @nodobito/api
 if (-not (Test-Path apps/api/.dev.vars)) { Copy-Item apps/api/.dev.vars.example apps/api/.dev.vars }
 ```
@@ -390,7 +389,6 @@ EXPO_PUBLIC_API_BASE_URL=http://10.200.3.200:8787
 **ターミナル1：APIを起動**（初回マイグレーションで確認が出た場合は`Y`を入力します）。
 
 ```powershell
-cd C:\github_use\HackStage
 npm run dev:cloudflare --workspace @nodobito/api
 ```
 
@@ -399,7 +397,7 @@ APIのターミナルは起動したままにします。`apps/api/.dev.vars`を
 **ターミナル2：Expo Go向けに起動**します。
 
 ```powershell
-cd C:\github_use\HackStage\apps\mobile
+cd apps\mobile
 if (-not (Test-Path .env.local)) { Copy-Item .env.example .env.local }
 npx expo start --go --lan
 ```

@@ -8,6 +8,7 @@ module.exports = ({ config }) => {
     ios: { ...base.ios, ...config.ios, bundleIdentifier: 'com.nodobito.matching' },
     android: { ...base.android, ...config.android, package: 'com.nodobito.matching' },
     extra: {
+      ...base.extra,
       ...config.extra,
       apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL || '',
     },

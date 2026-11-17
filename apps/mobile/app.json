@@ -2,6 +2,7 @@
   "expo": {
     "name": "喉仏マッチングアプリ",
     "slug": "nodobito-matching",
+    "scheme": "nodobito-matching",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -19,6 +20,7 @@
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
+      "expo-router",
       [
         "expo-camera",
         {
@@ -33,8 +35,6 @@
     },
     "extra": {
       "apiBaseUrl": "",
-      "googleWebClientId": "",
-      "googleIosClientId": "",
       "eas": {
         "projectId": "1747542c-2b49-4122-9cd9-2ac86c95f9b8"
       }
