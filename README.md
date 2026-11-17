@@ -334,7 +334,9 @@ apps/
 
 ExpressとNode.jsの`node:sqlite`で開発用APIを実装しています。DBは`apps/api/data/app.sqlite`、画像は公開ディレクトリ外の`apps/api/private/captures/`へ保存します。どちらもGitには登録しません。
 
-起動は`npm run dev:api`、疎通確認は`GET http://localhost:3000/health`です。運営APIを有効にする場合は、`apps/api/.env.example`を参考にリポジトリルートの`.env`を作成し、推測困難な`ADMIN_API_KEY`を設定します。運営APIは`x-admin-key`ヘッダーを要求します。
+起動は`npm run dev:api`、疎通確認は`GET http://localhost:3000/health/ready`です。運営APIを有効にする場合は、`apps/api/.env.example`を参考にリポジトリルートの`.env`を作成し、運営の役割ごとに異なるキーを設定します。各運営APIは`x-admin-key`ヘッダーを要求します。
+
+キーは`ADMIN_USERS_KEY`、`ADMIN_VERIFICATION_KEY`、`ADMIN_CONTENT_KEY`、`ADMIN_SAFETY_KEY`、`ADMIN_AUDIT_KEY`に分けています。`.env`の鍵はリポジトリにコミットしないでください。
 
 ### API一覧
 
@@ -342,18 +344,40 @@ ExpressとNode.jsの`node:sqlite`で開発用APIを実装しています。DBは
 
 | 機能 | エンドポイント |
 |---|---|
-| 会員登録・ログイン・ログアウト | `POST /auth/signup`、`POST /auth/login`、`POST /auth/logout`、`GET /auth/me` |
-| 年齢確認・プロフィール | `POST /auth/age-verification`、`POST /profiles`、`GET /profiles/:id` |
-| 撮影画像 | `POST /captures`、`GET /captures/:id/image` |
-| 探す・いいね・マッチ | `GET /discover`、`POST /likes`、`GET /likes/received`、`GET /matches` |
-| トーク | `GET /matches/:id/messages`、`POST /matches/:id/messages` |
+| 会員・セッション | `POST /auth/signup`、`POST /auth/login`、`POST /auth/logout`、`GET /auth/me`、`GET/DELETE /auth/sessions`、`DELETE /account` |
+| プロフィール・紹介条件 | `POST /profiles`、`GET /profiles/:id`、`GET/PUT /preferences/discovery`、`GET /discover` |
+| 連絡先非表示 | `PUT/DELETE /privacy/contacts` |
+| 撮影画像・公開同意 | `POST /captures`、`DELETE /captures/:id`、`GET /captures/:id/image`、`GET /captures/:id/access-history`、`GET/PUT/DELETE /matches/:id/stage-consent` |
+| いいね・マッチ・トーク | `POST /likes`、`GET /likes/received`、`GET /matches`、`GET/POST/DELETE /matches/:id/messages` |
 | デイリー | `GET /daily`、`GET /daily/answers`、`POST /daily/answers` |
-| ブロック・通報 | `POST /users/:id/block`、`DELETE /users/:id/block`、`POST /users/:id/reports` |
-| 運営 | `GET /admin/users`、`PATCH /admin/users/:id/status`、`GET /admin/verifications`、`PATCH /admin/users/:id/verification`、`PATCH /admin/users/:id/classification`、`GET/POST/PATCH /admin/daily`、`GET/PATCH /admin/reports`、`GET /admin/image-access` |
+| 初回デート | `GET/POST /matches/:id/date-plans`、`PATCH /matches/:id/date-plans/:planId/consent`、`POST .../reschedule`、`POST .../cancel`、`POST .../arrival` |
+| 安全・異議申し立て | `POST/DELETE /users/:id/block`、`POST /users/:id/reports`、`POST/GET /appeals` |
+| 通知 | `PUT/DELETE /notifications/push-token`、`GET /notifications`、`PATCH /notifications/:id/read`、`PATCH /notifications/read-all` |
+| 運営 | `GET /admin/users`、`GET /admin/verifications`、`GET /admin/daily`、`GET /admin/reports`、`GET /admin/safety-flags`、`GET /admin/appeals`、`GET /admin/audit`、`GET /admin/operations/summary` |
 
 主要なリクエスト例：プロフィールは`{ "displayName": "表示名", "age": 25, "area": "東京都", "bio": "自己紹介" }`、年齢確認申請は`{ "adultConfirmed": true }`、いいねは`{ "toUserId": "ユーザーID" }`、デイリー回答は`{ "topicId": "課題ID", "answer": "回答" }`です。撮影登録は`{ "captureSource": "in_app_camera", "stage": 0, "imageData": "data:image/jpeg;base64,..." }`を受け付けます。
 
 段階公開は同じマッチ内で双方がメッセージした日数と、双方が回答した課題数から算出します。相互発言3日で段階1、7日と共同回答1件で段階2、14日と3件で段階3、30日と7件で段階4です。課金による解放はありません。
+
+## 追加の安全・プライバシー機能
+
+- 紹介条件は`relationshipGoal`、`conversationPace`、相手に求める条件、喉仏分類の希望で管理します。双方の条件が合う候補だけを紹介し、累計表示回数の少ないプロフィールを優先してローテーションします。有料優先表示の経路はありません。候補数と少ない場合の案内も返します。
+- 公開画像は相手とのマッチごとに、所有者が段階と期限を指定して同意します。取り消し・期限切れは画像取得ごとに再確認されます。相手には画像を事前配布せず、認証済みの画像APIが要求時にのみストリーム配信します。閲覧履歴は所有者と運営が確認できます。
+- 連絡先非表示APIは、ユーザーが同意した連絡先をサーバー秘密鍵付きHMACで照合用ダイジェストに変換し、元の電話帳情報は保存しません。登録メールと運営が確認済みの電話識別子に一致する候補を検索結果から除外します。電話識別子の確認には別途本人確認運用が必要です。
+- 初回デート予定はマッチ相手だけに共有し、予定、エリア、正確な場所、到着状態を個別の同意範囲として扱います。正確な場所は`DATE_LOCATION_KEY`によるAES-256-GCM暗号文として保存し、双方の同意・確認と有効期限が満たされたときだけ復号して返します。再調整、取消、到着は通知と監査ログに記録します。
+- メッセージの外部リンクや投資勧誘語句を検知すると警告を返して運営確認キューに登録します。運営は警告、メッセージ削除、期限付き利用制限、見送りを選べます。利用者は異議申し立てを送信できます。
+- 通知はアプリ内通知として保存し、登録済みExpo Push Tokenにはバックグラウンドキューから送信します。Expo Push Serviceが受理した時点を送信済みとして記録し、失敗時は再試行します。
+- 運営キーをユーザー管理、本人確認、コンテンツ、安全、監査の役割ごとに分離します。主要操作と判断を監査ログに記録します。
+
+`.env`の`CONTACT_HASH_KEY`にはランダムな秘密値を、`DATE_LOCATION_KEY`にはBase64形式のランダム32バイト鍵を設定します。鍵を変更すると保存済みの連絡先ダイジェストとの照合や既存予定の復号ができなくなるため、鍵管理・バックアップを行ってください。
+
+手動バックアップはAPIを停止してから実行します。
+
+```sh
+npm run backup --workspace @nodobito/api
+```
+
+DBと画像を`backups/api/`以下に保存します。復旧時はAPIを停止し、バックアップ内の`app.sqlite`を`apps/api/data/app.sqlite`へ、`captures/`を`apps/api/private/captures/`へ戻してから起動します。バックアップの世代管理や外部保管は運用側で設定してください。
 
 ### 実装範囲と制約
 
@@ -361,7 +385,9 @@ ExpressとNode.jsの`node:sqlite`で開発用APIを実装しています。DBは
 - 喉仏分類は運営が`present`、`absent`、`pending`を設定します。画像からの自動推定や性別判定は行いません。
 - 画像は非公開保存し、所有者またはマッチ相手に限定して配信します。取得時に公開段階を再確認し、アクセスログを記録します。
 - `captureSource: in_app_camera`はアプリからの申告値です。サーバーだけで画像が端末カメラから来たことは証明できません。
-- ブロック、通報、運営による利用停止、ログインや投稿の回数制限を実装しています。運営画面UI、画像透かし、画像内の不正検出、年齢確認プロバイダーは未実装です。
-- SQLiteはローカル開発用です。Node.jsの`node:sqlite`は同期APIで、実験的機能の警告が出ます。本番運用前にPostgreSQL等のサーバーDB、TLS、秘密情報管理、バックアップ、保持期間、共有レート制限を用意してください。
+- ブロック、通報、運営による利用停止、ログインや投稿の回数制限を実装しています。運営画面UI、画像透かし、画像内の不正検出、年齢確認プロバイダー、個人別の運営アカウント管理は未実装です。
+- 投資等の検知はルールベースで、誤検知と見逃しがあります。到着確認は本人の操作申告であり、GPS到着証明ではありません。画像やメッセージは共有後に保存・撮影される可能性をサーバーだけでは排除できません。
+- Expo Pushの送信には端末側の通知登録、iOS/Androidのプッシュ資格情報、Expo Push Tokenが必要です。実機プッシュはExpo Goではなく開発ビルドで確認します。
+- SQLiteはローカル開発用です。Node.jsの`node:sqlite`は同期APIで、実験的機能の警告が出ます。本番運用前にPostgreSQL等のサーバーDB、TLS、秘密情報管理、バックアップ、保持期間、複数インスタンスで共有するレート制限と通知キューを用意してください。
 
 スクリーンショットをサーバー側だけで完全に防ぐことはできません。画像アクセス制御と記録は補助策です。

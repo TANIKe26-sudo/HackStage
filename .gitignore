@@ -3,6 +3,9 @@ apps/*/node_modules/
 apps/mobile/.expo/
 apps/mobile/dist/
 apps/api/dist/
+apps/api/data/
+apps/api/private/
+backups/
 .env
 .env.*
 !.env.example
