@@ -1,15 +1,26 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AuthButton } from '../components/AuthButton';
 import { CameraIcon } from '../components/CameraIcon';
 import { FormField } from '../components/FormField';
+import { useAuth } from '../context/AuthContext';
 import { useSignUpDraft } from '../context/SignUpDraftContext';
 import { colors, spacing } from '../../../theme/tokens';
 
 export default function SignUpScreen() {
-  const { profilePhotoUri } = useSignUpDraft();
+  const { profilePhotoUri, profilePhotoDataUrl, setProfilePhotoDataUrl } = useSignUpDraft();
+  const { profile, token, saveProfile } = useAuth();
+  const [name, setName] = useState(profile?.display_name ?? '');
+  const [age, setAge] = useState(
+    profile?.birth_year ? String(new Date().getFullYear() - profile.birth_year) : '',
+  );
+  const [area, setArea] = useState(profile?.area ?? '');
+  const [purpose, setPurpose] = useState(profile?.purpose ?? '');
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -18,6 +29,50 @@ export default function SignUpScreen() {
     }
 
     router.replace('/');
+  };
+
+  const handleComplete = async () => {
+    if (!token) {
+      router.replace('/create-account');
+      return;
+    }
+
+    const numericAge = Number(age);
+    if (!name.trim() || name.trim().length > 30) {
+      setNotice('ユーザー名を1〜30文字で入力してください。');
+      return;
+    }
+    if (!Number.isInteger(numericAge) || numericAge < 18 || numericAge > 120) {
+      setNotice('18歳以上の年齢を入力してください。');
+      return;
+    }
+    if (!area.trim() || area.trim().length > 80) {
+      setNotice('お住まいの地域を入力してください。');
+      return;
+    }
+
+    setBusy(true);
+    setNotice('');
+    try {
+      await saveProfile(
+        {
+          display_name: name.trim(),
+          birth_year: new Date().getFullYear() - numericAge,
+          area: area.trim(),
+          purpose: purpose.trim(),
+          conversation_pace: profile?.conversation_pace ?? 'balanced',
+          throat_class: profile?.throat_class ?? 'present',
+          bio: profile?.bio ?? '',
+        },
+        profilePhotoDataUrl,
+      );
+      setProfilePhotoDataUrl(null);
+      router.replace('/discover');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'プロフィールを保存できませんでした。');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -71,10 +126,35 @@ export default function SignUpScreen() {
         </View>
 
         <View style={styles.fields}>
-          <FormField label="ユーザー名" placeholder="例) たろう" />
-          <FormField label="年齢" placeholder="例) 26" keyboardType="number-pad" />
-          <FormField label="お住まいの地域" placeholder="例) 東京都" />
-          <FormField label="お相手探しの目的" placeholder="例) 真剣な交際" />
+          <FormField
+            label="ユーザー名"
+            placeholder="例) たろう"
+            value={name}
+            onChangeText={setName}
+            maxLength={30}
+          />
+          <FormField
+            label="年齢"
+            placeholder="例) 26"
+            keyboardType="number-pad"
+            value={age}
+            onChangeText={(value) => setAge(value.replace(/\D/g, '').slice(0, 3))}
+            maxLength={3}
+          />
+          <FormField
+            label="お住まいの地域"
+            placeholder="例) 東京都"
+            value={area}
+            onChangeText={setArea}
+            maxLength={80}
+          />
+          <FormField
+            label="お相手探しの目的"
+            placeholder="例) 真剣な交際"
+            value={purpose}
+            onChangeText={setPurpose}
+            maxLength={100}
+          />
         </View>
 
         <View style={styles.categoryCard}>
@@ -82,7 +162,13 @@ export default function SignUpScreen() {
           <Text style={styles.categoryValue}>喉仏あり / 男性カテゴリ</Text>
         </View>
 
-        <AuthButton label="完了" variant="primary" />
+        {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
+        <AuthButton
+          label={busy ? '保存中…' : '完了'}
+          variant="primary"
+          onPress={handleComplete}
+          disabled={busy}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -168,6 +254,11 @@ const styles = StyleSheet.create({
   },
   fields: {
     gap: spacing.sm,
+  },
+  notice: {
+    color: colors.primary,
+    fontSize: 13,
+    lineHeight: 19,
   },
   categoryCard: {
     gap: 7,

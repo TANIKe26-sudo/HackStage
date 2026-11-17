@@ -10,15 +10,23 @@
     "dev": "node --env-file-if-exists=../../.env --import tsx --watch src/index.ts",
     "start": "node --env-file-if-exists=../../.env --import tsx src/index.ts",
     "typecheck": "tsc --noEmit",
+    "dev:cloudflare": "wrangler dev --local --ip 0.0.0.0 --config wrangler.jsonc",
+    "deploy:cloudflare": "wrangler deploy --config wrangler.jsonc",
+    "typecheck:cloudflare": "tsc --noEmit -p tsconfig.cloudflare.json",
+    "d1:migrate:local": "wrangler d1 migrations apply nodobito-db --local --config wrangler.jsonc",
+    "d1:migrate:remote": "wrangler d1 migrations apply nodobito-db --remote --config wrangler.jsonc",
     "backup": "node --env-file-if-exists=../../.env scripts/backup.mjs"
   },
   "dependencies": {
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "hono": "^4.13.19"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261117.1",
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.0",
     "tsx": "^4.20.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "wrangler": "^4.163.0"
   }
 }

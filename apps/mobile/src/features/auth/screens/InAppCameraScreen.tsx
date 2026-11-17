@@ -18,7 +18,7 @@ export default function InAppCameraScreen() {
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isTakingPicture, setIsTakingPicture] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { setProfilePhotoUri } = useSignUpDraft();
+  const { setProfilePhotoUri, setProfilePhotoDataUrl } = useSignUpDraft();
 
   useFocusEffect(
     useCallback(() => {
@@ -60,10 +60,13 @@ export default function InAppCameraScreen() {
     setErrorMessage(null);
 
     try {
-      const picture = await cameraRef.current.takePictureAsync({ quality: 0.85 });
+      const picture = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: true });
       if (!picture.uri) throw new Error('撮影画像が取得できませんでした。');
 
       setProfilePhotoUri(picture.uri);
+      setProfilePhotoDataUrl(
+        picture.base64 ? `data:image/jpeg;base64,${picture.base64}` : null,
+      );
       if (router.canGoBack()) {
         router.back();
       } else {

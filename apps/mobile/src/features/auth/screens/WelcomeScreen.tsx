@@ -1,11 +1,30 @@
 import { Link, router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AuthButton } from '../components/AuthButton';
+import { isProfileReady } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../../../theme/tokens';
 
 export default function WelcomeScreen() {
+  const { isRestoring, token, profile } = useAuth();
+
+  useEffect(() => {
+    if (!isRestoring && token && isProfileReady(profile)) router.replace('/discover');
+  }, [isRestoring, profile, token]);
+
+  if (isRestoring) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loading}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.content}>
@@ -18,9 +37,9 @@ export default function WelcomeScreen() {
           <AuthButton
             label="ログイン"
             variant="outline"
-            onPress={() => router.replace('/discover')}
+            onPress={() => router.push('/login')}
           />
-          <Link href="/sign-up" asChild>
+          <Link href="/create-account" asChild>
             <AuthButton label="新規登録" variant="primary" />
           </Link>
         </View>
@@ -38,6 +57,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
+  },
+  loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   brand: {
     alignItems: 'center',
