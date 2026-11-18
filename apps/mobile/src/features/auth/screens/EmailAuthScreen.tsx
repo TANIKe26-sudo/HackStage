@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: 19,
+    fontSize: 21,
     fontWeight: '700',
   },
   headerSpacer: {
@@ -168,8 +168,8 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
   },
   sectionTitle: {
-    color: colors.primary,
-    fontSize: 17,
+    color: colors.text,
+    fontSize: 21,
     fontWeight: '700',
   },
   description: {

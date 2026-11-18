@@ -42,6 +42,16 @@ export default function MainLayout() {
           contentStyle: { backgroundColor: colors.background },
         }}
       />
+      <Stack.Screen
+        name="profile-settings/[kind]"
+        options={{
+          animation: Platform.OS === 'ios' ? 'default' : 'slide_from_right',
+          animationMatchesGesture: true,
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      />
     </Stack>
   );
 }

@@ -66,7 +66,8 @@ const styles = StyleSheet.create({
     width: 88,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 2,
+    overflow: 'hidden',
+    borderRadius: 10,
     backgroundColor: '#F2E5D8',
   },
   noImage: {

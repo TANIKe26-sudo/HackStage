@@ -225,13 +225,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backLabel: {
-    color: colors.primary,
+    color: colors.text,
     fontSize: 32,
     lineHeight: 34,
   },
   title: {
     color: colors.text,
-    fontSize: 19,
+    fontSize: 21,
     fontWeight: '700',
   },
   headerSpacer: {
