@@ -63,7 +63,7 @@ function ConnectedPartner({ conversationId }: { conversationId: string }) {
             onPress={() => router.back()}
             style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           >
-            <Ionicons name="chevron-back" size={25} color={colors.text} />
+            <Ionicons name="chevron-back" size={25} color={colors.mutedText} />
           </Pressable>
           <Text numberOfLines={1} style={styles.headerTitle}>
             {profile?.name ?? 'プロフィール'}

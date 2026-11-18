@@ -137,6 +137,16 @@ export function profileRoutes(app: App) {
             await c.env.DB.batch(statements.slice(i, i + 50));
         return c.json({ hidden: statements.length });
     });
+    app.get('/api/contacts/hide', async (c) => {
+        const row = await c.env.DB.prepare('SELECT COUNT(*) AS count FROM contact_hides WHERE user_id=?').bind(c.get('userId')).first<Row>();
+        return c.json({ count: Number(row?.count ?? 0) });
+    });
+    app.delete('/api/contacts/hide/entry', async (c) => {
+        const body = await input(c), contact = text(body.contact, 200, true);
+        const digest = await contactHash(c.env, contact);
+        const result = await c.env.DB.prepare('DELETE FROM contact_hides WHERE user_id=? AND contact_hash=?').bind(c.get('userId'), digest).run();
+        return c.json({ removed: result.meta.changes > 0 });
+    });
     app.delete('/api/contacts/hide', async (c) => { await c.env.DB.prepare('DELETE FROM contact_hides WHERE user_id=?').bind(c.get('userId')).run(); return c.json({ cleared: true }); });
     app.delete('/api/account', async (c) => {
         const body = await input(c), me = c.get('userId');

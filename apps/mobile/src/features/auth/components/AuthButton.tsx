@@ -34,12 +34,13 @@ export function AuthButton({ label, variant, onPress, disabled = false }: AuthBu
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 52,
+    minHeight: 48,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 15,
+    borderRadius: 12,
     paddingHorizontal: 20,
+    paddingVertical: 14,
   },
   primary: {
     backgroundColor: colors.primary,
@@ -56,9 +57,8 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    letterSpacing: 0.5,
   },
   primaryLabel: {
     color: colors.white,

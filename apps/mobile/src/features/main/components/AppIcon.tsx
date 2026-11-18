@@ -10,7 +10,7 @@ export type AppIconName =
   | 'calendar'
   | 'location'
   | 'report'
-  | 'data'
+  | 'accountDelete'
   | 'hidePeople'
   | 'chevron';
 
@@ -30,7 +30,7 @@ const iconNames = {
   calendar: 'calendar-outline',
   location: 'location-outline',
   report: 'checkmark-outline',
-  data: 'shield-checkmark-outline',
+  accountDelete: 'trash-outline',
   hidePeople: 'person-remove-outline',
   chevron: 'chevron-forward-outline',
 } as const;
