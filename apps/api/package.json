@@ -11,10 +11,10 @@
     "start": "node --env-file-if-exists=../../.env --import tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "dev:cloudflare": "wrangler dev --local --ip 0.0.0.0 --config wrangler.jsonc",
-    "deploy:cloudflare": "wrangler deploy --config wrangler.jsonc",
+    "deploy:cloudflare": "wrangler deploy --env production --config wrangler.jsonc",
     "typecheck:cloudflare": "tsc --noEmit -p tsconfig.cloudflare.json",
     "d1:migrate:local": "wrangler d1 migrations apply nodobito-db --local --config wrangler.jsonc",
-    "d1:migrate:remote": "wrangler d1 migrations apply nodobito-db --remote --config wrangler.jsonc",
+    "d1:migrate:remote": "wrangler d1 migrations apply DB --remote --env production --config wrangler.jsonc",
     "backup": "node --env-file-if-exists=../../.env scripts/backup.mjs"
   },
   "dependencies": {

@@ -357,7 +357,20 @@ npm run dev:cloudflare --workspace @nodobito/api
 npm run typecheck:cloudflare --workspace @nodobito/api
 ```
 
-リモートDB適用は`npm run d1:migrate:remote --workspace @nodobito/api`、デプロイは`npm run deploy:cloudflare --workspace @nodobito/api`です。デプロイ前に`wrangler.jsonc`へ本番D1 IDとR2バケット名を設定し、`wrangler secret put`で`SESSION_SECRET`、`CONTACT_HASH_KEY`、`DATE_LOCATION_KEY`、`ADMIN_SAFETY_KEY`、`ADMIN_VERIFICATION_KEY`、`ADMIN_CONTENT_KEY`、`ADMIN_AUDIT_KEY`を登録してください。Expo Pushを使う場合は`EXPO_ACCESS_TOKEN`も登録します。秘密情報をGitへコミットしないでください。
+本番環境は`wrangler.jsonc`の`env.production`で設定しています。D1は`hackstage_nodo`を使用し、ローカル用の`nodobito-db`とは分かれています。ローカルの登録データと`.dev.vars`は本番へ自動で移りません。別のCloudflareアカウントで使う場合は、本番の`account_id`、`database_name`、`database_id`を差し替えてください。
+
+初回は以下を`apps/api`で実行します。ブラウザでCloudflareにログイン済みでも、Wranglerのログインは別途必要です。
+
+```powershell
+cd C:\github_use\HackStage\apps\api
+npx wrangler login
+npx wrangler r2 bucket create nodobito-private-captures
+npm run d1:migrate:remote
+```
+
+R2バケットは事前に利用を有効化し、すでに同名のものがあれば再作成は不要です。本番用の秘密値は`npx wrangler secret put <キー名> --env production`で登録してください。必要なキーは`SESSION_SECRET`、`CONTACT_HASH_KEY`、`DATE_LOCATION_KEY`、`ADMIN_SAFETY_KEY`、`ADMIN_VERIFICATION_KEY`、`ADMIN_CONTENT_KEY`、`ADMIN_AUDIT_KEY`です。用途ごとに異なるランダムな値を使い、`DATE_LOCATION_KEY`は32バイトをBase64化した値にします。Expo Pushを使う場合は`EXPO_ACCESS_TOKEN`も登録します。秘密情報をGitへコミットしないでください。
+
+リポジトリルートで`npm run deploy:cloudflare --workspace @nodobito/api`を実行すると本番環境へデプロイします。出力されたHTTPS URLの`/health/ready`で`{"ok":true,"database":"ready"}`が返ることを確認し、モバイルの`EXPO_PUBLIC_API_BASE_URL`へそのURLを設定してExpoを再起動します。独自ドメインはAPIの公開後にWorkerへ追加できます。
 
 主なAPIは`POST /auth/signup`、`POST /auth/login`、`POST /auth/logout`、`POST /api/captures`、`GET /api/discover`、`POST /api/likes`、`GET/POST /api/matches/:id/messages`、`GET /api/daily`、`POST /api/matches/:id/date-plans`です。管理APIは`x-admin-key`で役割別に制限します。位置情報は双方の確認と共有同意が揃うまで開示されず、暗号化して保存します。連絡先は秘密鍵付きHMACダイジェストのみ保存します。
 
