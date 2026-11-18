@@ -16,5 +16,23 @@
   "r2_buckets": [
     { "binding": "CAPTURES", "bucket_name": "nodobito-private-captures" }
   ],
-  "triggers": { "crons": ["*/5 * * * *"] }
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "env": {
+    "production": {
+      "name": "nodobito-api",
+      "account_id": "94525e870e53136c86279f0a75bc70b6",
+      "workers_dev": true,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hackstage_nodo",
+          "database_id": "843bb329-6a8b-4273-81d8-e81d9274dc1e",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        { "binding": "CAPTURES", "bucket_name": "nodobito-private-captures" }
+      ]
+    }
+  }
 }
