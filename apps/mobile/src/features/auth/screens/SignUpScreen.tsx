@@ -13,6 +13,7 @@ import { colors, spacing } from '../../../theme/tokens';
 export default function SignUpScreen() {
   const { profilePhotoUri, profilePhotoDataUrl, setProfilePhotoDataUrl } = useSignUpDraft();
   const { profile, token, saveProfile } = useAuth();
+  const isEditingProfile = Boolean(profile?.birth_year);
   const [name, setName] = useState(profile?.display_name ?? '');
   const [age, setAge] = useState(
     profile?.birth_year ? String(new Date().getFullYear() - profile.birth_year) : '',
@@ -78,7 +79,7 @@ export default function SignUpScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
+        <View style={[styles.header, isEditingProfile && styles.profileEditHeader]}>
           <Pressable
             accessibilityLabel="前の画面へ戻る"
             accessibilityRole="button"
@@ -87,7 +88,9 @@ export default function SignUpScreen() {
           >
             <Text style={styles.backLabel}>‹</Text>
           </Pressable>
-          <Text style={styles.title}>{profile?.birth_year ? 'プロフィール編集' : '新規登録'}</Text>
+          <Text style={[styles.title, isEditingProfile && styles.profileEditTitle]}>
+            {isEditingProfile ? 'プロフィール編集' : '新規登録'}
+          </Text>
           <View style={styles.headerSpacer} />
         </View>
 
@@ -164,7 +167,7 @@ export default function SignUpScreen() {
 
         {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
         <AuthButton
-          label={busy ? '保存中…' : '完了'}
+          label={busy ? '保存中…' : isEditingProfile ? '保存' : '完了'}
           variant="primary"
           onPress={handleComplete}
           disabled={busy}
@@ -192,6 +195,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
   },
+  profileEditHeader: {
+    justifyContent: 'flex-start',
+  },
   backButton: {
     width: 36,
     height: 36,
@@ -199,14 +205,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backLabel: {
-    color: colors.primary,
+    color: colors.text,
     fontSize: 32,
     lineHeight: 34,
   },
   title: {
     color: colors.text,
-    fontSize: 19,
+    fontSize: 21,
     fontWeight: '700',
+  },
+  profileEditTitle: {
+    marginLeft: spacing.xs,
+    textAlign: 'left',
   },
   headerSpacer: {
     width: 36,

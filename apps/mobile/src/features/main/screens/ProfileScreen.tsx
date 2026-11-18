@@ -1,4 +1,3 @@
-import { ProfileSettings, type SettingKind } from '../components/ProfileSettings';
 import { ProtectedPhoto } from '../components/ProtectedPhoto';
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -36,7 +35,6 @@ function getThroatLabel(throatClass?: string) {
 
 export default function ProfileScreen() {
   const { profile, logOut } = useAuth();
-  const [setting, setSetting] = useState<SettingKind | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const handleLogOut = async () => {
     if (isLoggingOut) return;
@@ -99,7 +97,13 @@ export default function ProfileScreen() {
                 key={setting.label}
                 icon={setting.icon}
                 label={setting.label}
-                onPress={() => { if (setting.icon === 'profileEdit') router.push('/sign-up'); else setSetting(setting.icon); }}
+                onPress={() => {
+                  if (setting.icon === 'profileEdit') {
+                    router.push('/sign-up');
+                  } else {
+                    router.push({ pathname: '/profile-settings/[kind]', params: { kind: setting.icon } });
+                  }
+                }}
               />
             ))}
           </View>
@@ -126,7 +130,6 @@ export default function ProfileScreen() {
 
         <MainTabBar activeTab="profile" onTabPress={handleTabPress} />
       </View>
-      <ProfileSettings kind={setting} onClose={() => setSetting(null)} />
     </SafeAreaView>
   );
 }

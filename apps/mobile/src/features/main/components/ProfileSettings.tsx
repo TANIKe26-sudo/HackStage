@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiRequest } from '../../auth/api/client';
 import { useAuth } from '../../auth/context/AuthContext';
@@ -17,13 +18,12 @@ function Button({ label, onPress, disabled }: { label: string; onPress: () => vo
 function Field({ label, value, onChange, password }: { label: string; value: string; onChange: (value: string) => void; password?: boolean }) {
   return <View style={{ gap: 6 }}><Text style={styles.text}>{label}</Text><TextInput accessibilityLabel={label} value={value} onChangeText={onChange} secureTextEntry={password} autoCapitalize="none" maxLength={password ? 128 : 1000} style={styles.field} /></View>;
 }
-export function ProfileSettings({ kind, onClose }: { kind: SettingKind | null; onClose: () => void }) {
-  const { token } = useAuth();
-  return <Modal visible={!!kind} animationType="slide" onRequestClose={onClose}>
-    {kind ? <SettingsContent key={`${token}:${kind}`} kind={kind} onClose={onClose} /> : null}
-  </Modal>;
+export function ProfileSettings({ kind }: { kind: SettingKind }) {
+  return (
+    <SettingsContent key={kind} kind={kind} />
+  );
 }
-function SettingsContent({ kind, onClose }: { kind: SettingKind; onClose: () => void }) {
+function SettingsContent({ kind }: { kind: SettingKind }) {
   const { token, profile, refreshProfile, logOut } = useAuth();
   const api = useMainApi();
   const [busy, setBusy] = useState(false), lock = useRef(false);
@@ -79,9 +79,19 @@ function SettingsContent({ kind, onClose }: { kind: SettingKind; onClose: () => 
       { text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: () => void run(async () => { await request(`/api/matches/${selected}/messages`, 'DELETE'); }, '会話履歴を削除しました') },
     ]);
   };
-  return <SafeAreaView style={styles.screen}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-    <Button label="閉じる" onPress={onClose} />
-    <Text style={styles.title}>{titles[kind]}</Text>
+  return <SafeAreaView style={styles.screen}>
+    <View style={styles.header}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="マイページに戻る"
+        onPress={() => router.back()}
+        style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+      >
+        <Ionicons name="chevron-back" size={25} color={colors.text} />
+      </Pressable>
+      <Text style={styles.title}>{titles[kind]}</Text>
+    </View>
+    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
     <RequestState loading={busy} error={error || undefined} onRetry={() => void run(reload)} />
     {kind === 'visibility' ? <>
       <Text style={styles.text}>居住地域の表示</Text>
@@ -140,13 +150,18 @@ function SettingsContent({ kind, onClose }: { kind: SettingKind; onClose: () => 
       <Button label="選択した会話の履歴を削除" disabled={busy || !selected} onPress={clearMessages} />
       <Button label="現在のプロフィール写真を削除" disabled={busy || !profile?.profile_photo_capture_id} onPress={() => Alert.alert('写真の削除', '現在の写真を削除しますか？', [{ text: 'キャンセル', style: 'cancel' }, { text: '削除', style: 'destructive', onPress: () => void run(async () => { await request(`/api/captures/${profile!.profile_photo_capture_id}`, 'DELETE'); await refreshProfile(); }, '写真を削除しました') }])} />
       <Field label="退会確認用パスワード" value={password} onChange={setPassword} password />
-      <Button label="アカウントを削除して退会" disabled={busy || !password} onPress={() => Alert.alert('アカウントの削除', 'アカウントと写真・会話などを削除します。この操作は取り消せません。', [{ text: 'キャンセル', style: 'cancel' }, { text: '退会する', style: 'destructive', onPress: () => void run(async () => { await request('/api/account/delete', 'POST', { password }); await logOut().catch(() => undefined); onClose(); router.replace('/'); }) }])} />
+      <Button label="アカウントを削除して退会" disabled={busy || !password} onPress={() => Alert.alert('アカウントの削除', 'アカウントと写真・会話などを削除します。この操作は取り消せません。', [{ text: 'キャンセル', style: 'cancel' }, { text: '退会する', style: 'destructive', onPress: () => void run(async () => { await request('/api/account/delete', 'POST', { password }); await logOut().catch(() => undefined); router.replace('/'); }) }])} />
     </> : null}
-  </ScrollView></SafeAreaView>;
+  </ScrollView>
+  </SafeAreaView>;
 }
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background }, content: { padding: spacing.lg, gap: spacing.md },
-  title: { fontSize: 22, fontWeight: '700', color: colors.text }, text: { color: colors.text, lineHeight: 22 },
+  screen: { flex: 1, backgroundColor: colors.background },
+  header: { height: 54, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.background, paddingHorizontal: spacing.md },
+  backButton: { width: 36, height: 42, alignItems: 'flex-start', justifyContent: 'center' },
+  pressed: { opacity: 0.7 },
+  content: { padding: spacing.lg, gap: spacing.md },
+  title: { fontSize: 21, fontWeight: '700', color: colors.text }, text: { color: colors.text, lineHeight: 22 },
   field: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, backgroundColor: colors.surface, color: colors.text },
   button: { padding: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 12 },
   buttonText: { color: colors.primary, fontWeight: '600' }, plan: { gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 12 },

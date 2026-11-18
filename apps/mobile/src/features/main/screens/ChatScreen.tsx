@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
   },
   name: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: 21,
     fontWeight: '700',
   },
   nameButton: {
