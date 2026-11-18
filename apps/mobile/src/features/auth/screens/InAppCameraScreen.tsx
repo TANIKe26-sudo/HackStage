@@ -1,4 +1,5 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -60,12 +61,17 @@ export default function InAppCameraScreen() {
     setErrorMessage(null);
 
     try {
-      const picture = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: true });
+      const picture = await cameraRef.current.takePictureAsync({ quality: 0.85 });
       if (!picture.uri) throw new Error('撮影画像が取得できませんでした。');
-
-      setProfilePhotoUri(picture.uri);
+      const context = ImageManipulator.manipulate(picture.uri);
+      if (Math.max(picture.width, picture.height) > 1280) {
+        context.resize(picture.width >= picture.height ? { width: 1280 } : { height: 1280 });
+      }
+      const rendered = await context.renderAsync();
+      const resized = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.85, base64: true });
+      setProfilePhotoUri(resized.uri);
       setProfilePhotoDataUrl(
-        picture.base64 ? `data:image/jpeg;base64,${picture.base64}` : null,
+        resized.base64 ? `data:image/jpeg;base64,${resized.base64}` : null,
       );
       if (router.canGoBack()) {
         router.back();

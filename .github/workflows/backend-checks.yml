@@ -1,0 +1,20 @@
+name: Backend checks
+on:
+  pull_request:
+    paths: ['apps/api/**', 'package-lock.json', '.github/workflows/backend-checks.yml']
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck:cloudflare --workspace @nodobito/api
+      - run: npm run typecheck --workspace @nodobito/api
+      - run: npm run test:cloudflare --workspace @nodobito/api

@@ -4,7 +4,8 @@
   "workspaces": ["apps/*"],
   "scripts": {
     "dev": "concurrently -k -n api,mobile -c blue,magenta \"npm run dev:api\" \"npm run dev:mobile\"",
-    "dev:api": "npm run dev --workspace @nodobito/api",
+    "dev:api": "npm run dev:cloudflare --workspace @nodobito/api",
+    "dev:api:legacy": "npm run dev --workspace @nodobito/api",
     "dev:mobile": "npm run start --workspace mobile"
   },
   "devDependencies": {

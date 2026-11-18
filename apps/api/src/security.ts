@@ -49,15 +49,6 @@ export function requireAppealAuth(request: Request, response: Response, next: Ne
   next();
 }
 
-export function requireAgeApproved(_request: Request, response: Response, next: NextFunction): void {
-  const row = db.prepare('SELECT status FROM age_verifications WHERE user_id=?').get(response.locals.userId) as { status: string } | undefined;
-  if (row?.status !== 'approved') {
-    response.status(403).json({ error: '年齢確認の承認後に利用できます。', ageVerification: row?.status ?? 'unsubmitted' });
-    return;
-  }
-  next();
-}
-
 export type LimitScope = 'messaging' | 'discovery' | 'posting';
 export function requireNotLimited(scope: LimitScope) {
   return (_request: Request, response: Response, next: NextFunction): void => {
@@ -82,10 +73,9 @@ export function rateLimit(scope: string, max: number, intervalMs: number) {
   };
 }
 
-export type AdminRole = 'users' | 'verification' | 'content' | 'safety' | 'audit';
+export type AdminRole = 'users' | 'content' | 'safety' | 'audit';
 const adminEnv: Record<AdminRole, string> = {
   users: 'ADMIN_USERS_KEY',
-  verification: 'ADMIN_VERIFICATION_KEY',
   content: 'ADMIN_CONTENT_KEY',
   safety: 'ADMIN_SAFETY_KEY',
   audit: 'ADMIN_AUDIT_KEY',

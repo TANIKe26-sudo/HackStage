@@ -8,14 +8,16 @@ export type AuthProfile = {
   purpose: string | null;
   conversation_pace: string | null;
   throat_class: 'present' | 'absent' | 'pending';
-  age_verification: string;
+  email_verified?: number;
   profile_photo_capture_id?: string | null;
 };
 
 type ApiErrorResponse = { error?: string };
 
 const errorMessages: Record<string, string> = {
-  age_verification_required: 'プロフィールの登録後、年齢確認が完了するとアプリを利用できます。',
+  feature_restricted: 'この機能は一時的に利用が制限されています。',
+  stage_locked: '相互の会話やデイリー達成で公開段階が進みます。',
+  resize_capture_before_upload: '画像サイズが大きすぎます。撮影し直してください。',
   invalid_email: 'メールアドレスの形式を確認してください。',
   invalid_password: 'パスワードは12〜128文字で入力してください。',
   invalid_credentials: 'メールアドレスまたはパスワードが正しくありません。',
