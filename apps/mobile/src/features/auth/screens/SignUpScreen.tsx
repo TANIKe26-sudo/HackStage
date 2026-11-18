@@ -1,4 +1,5 @@
 import { classificationLabels } from '../api/classification';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -80,15 +81,22 @@ export default function SignUpScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[styles.content, isEditingProfile && styles.profileEditContent]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={[styles.header, isEditingProfile && styles.profileEditHeader]}>
           <Pressable
             accessibilityLabel="前の画面へ戻る"
             accessibilityRole="button"
             onPress={handleBack}
-            style={styles.backButton}
+            style={[styles.backButton, isEditingProfile && styles.profileEditBackButton]}
           >
-            <Text style={styles.backLabel}>‹</Text>
+            {isEditingProfile ? (
+              <Ionicons name="chevron-back" size={25} color={colors.mutedText} />
+            ) : (
+              <Text style={styles.backLabel}>‹</Text>
+            )}
           </Pressable>
           <Text style={[styles.title, isEditingProfile && styles.profileEditTitle]}>
             {isEditingProfile ? 'プロフィール編集' : '新規登録'}
@@ -190,6 +198,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
   },
+  profileEditContent: {
+    paddingTop: 0,
+  },
   header: {
     minHeight: 42,
     flexDirection: 'row',
@@ -198,7 +209,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   profileEditHeader: {
+    height: 54,
+    minHeight: 54,
     justifyContent: 'flex-start',
+    marginHorizontal: -8,
   },
   backButton: {
     width: 36,
@@ -207,9 +221,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backLabel: {
-    color: colors.text,
+    color: colors.mutedText,
     fontSize: 32,
     lineHeight: 34,
+  },
+  profileEditBackButton: {
+    height: 42,
+    alignItems: 'flex-start',
   },
   title: {
     color: colors.text,
@@ -217,7 +235,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   profileEditTitle: {
-    marginLeft: spacing.xs,
+    marginLeft: 0,
     textAlign: 'left',
   },
   headerSpacer: {

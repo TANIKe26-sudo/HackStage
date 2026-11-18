@@ -81,7 +81,7 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
       <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
         <View style={styles.notFound}>
           <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={24} color={colors.text} />
+            <Ionicons name="chevron-back" size={24} color={colors.mutedText} />
           </Pressable>
           <RequestState loading={resource.loading} error={resource.error} onRetry={() => void resource.refresh()} />
         </View>
@@ -103,7 +103,7 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
             onPress={() => router.back()}
             style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           >
-            <Ionicons name="chevron-back" size={25} color={colors.text} />
+            <Ionicons name="chevron-back" size={25} color={colors.mutedText} />
           </Pressable>
 
           <View style={styles.avatar}>

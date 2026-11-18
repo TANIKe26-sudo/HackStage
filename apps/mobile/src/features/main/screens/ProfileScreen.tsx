@@ -23,8 +23,8 @@ const settings = [
   { icon: 'calendar', label: '待ち合わせ予定' },
   { icon: 'location', label: 'マッチング範囲' },
   { icon: 'report', label: '通報・ブロック' },
-  { icon: 'data', label: 'データ管理・削除' },
   { icon: 'hidePeople', label: '知り合いを非表示' },
+  { icon: 'accountDelete', label: 'アカウント削除' },
 ] as const;
 
 function getThroatLabel(throatClass?: string) {

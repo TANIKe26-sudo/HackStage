@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backLabel: {
-    color: colors.text,
+    color: colors.mutedText,
     fontSize: 32,
     lineHeight: 34,
   },

@@ -2,7 +2,7 @@ import { Redirect, useLocalSearchParams } from 'expo-router';
 
 import { ProfileSettings, type SettingKind } from '../components/ProfileSettings';
 
-const settingKinds: SettingKind[] = ['visibility', 'calendar', 'location', 'report', 'data', 'hidePeople'];
+const settingKinds: SettingKind[] = ['visibility', 'calendar', 'location', 'report', 'hidePeople', 'accountDelete'];
 
 export default function ProfileSettingsScreen() {
   const { kind } = useLocalSearchParams<{ kind?: string }>();
