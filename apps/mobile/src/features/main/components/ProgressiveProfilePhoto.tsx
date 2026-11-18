@@ -1,16 +1,19 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { ProtectedPhoto } from './ProtectedPhoto';
 import { colors } from '../../../theme/tokens';
 
 const photoHeight = 338;
-const revealedHeightByStage = [0, 38, 88, 198, photoHeight];
+const revealedHeightByStage = [0, 38, 88, 198, 280, photoHeight];
 
 export function ProgressiveProfilePhoto({
   intimacyStage,
   onUnlock,
+  captureId,
 }: {
   intimacyStage: number;
+  captureId?: string;
   onUnlock: () => void;
 }) {
   const revealedHeight = revealedHeightByStage[intimacyStage] ?? photoHeight;
@@ -19,13 +22,13 @@ export function ProgressiveProfilePhoto({
   return (
     <View style={styles.frame}>
       <View style={[styles.noImageArea, { height: revealedHeight }]}>
-        {revealedHeight > 0 ? <Text style={styles.noImageLabel}>No image</Text> : null}
+        <ProtectedPhoto captureId={captureId} />
       </View>
 
       {lockedHeight > 0 ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="タップして次の公開段階をデモで解放"
+          accessibilityLabel="公開条件を確認"
           onPress={onUnlock}
           style={({ pressed }) => [styles.lockedArea, { height: lockedHeight }, pressed && styles.pressed]}
         >

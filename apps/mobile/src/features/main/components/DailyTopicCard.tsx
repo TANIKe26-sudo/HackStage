@@ -13,9 +13,9 @@ type DailyTopicCardProps = {
 export function DailyTopicCard({ task, completed, onPress }: DailyTopicCardProps) {
   return (
     <Pressable
-      accessibilityRole="checkbox"
+      accessibilityRole="button"
       accessibilityLabel={task.label}
-      accessibilityState={{ checked: completed }}
+      accessibilityHint={completed ? '達成済み' : '達成方法を確認'}
       onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >

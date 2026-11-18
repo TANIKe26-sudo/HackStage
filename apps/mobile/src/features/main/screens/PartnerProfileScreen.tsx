@@ -1,40 +1,57 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useRef } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '../../../theme/tokens';
 import { IntimacyStageRow } from '../components/IntimacyStageRow';
 import { ProgressiveProfilePhoto } from '../components/ProgressiveProfilePhoto';
-import { demoConversations } from '../data/demoConversations';
-import { demoProfiles } from '../data/demoProfiles';
-
-const profileIdByConversationId: Record<string, string> = {
-  'demo-conversation-yuka': 'demo-yuka',
-  'demo-conversation-aya': 'demo-ayaka',
-  'demo-conversation-saki': 'demo-saki',
-};
+import { useMainApi, profileCard } from '../api/client';
+import { useResource } from '../api/useResource';
+import { RequestState } from '../components/RequestState';
 
 const stages = [
   { number: 1, label: '首・喉仏' },
   { number: 2, label: 'あご' },
   { number: 3, label: '口元' },
   { number: 4, label: '顔全体' },
+  { number: 5, label: '頭部まで含めた全体' },
 ];
 
 export default function PartnerProfileScreen() {
   const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
-  const conversation = demoConversations.find((item) => item.id === conversationId);
-  const profileId = profileIdByConversationId[conversationId];
-  const profile = demoProfiles.find((item) => item.id === profileId);
-  const [intimacyStage, setIntimacyStage] = useState(1);
+  return <ConnectedPartner key={conversationId} conversationId={conversationId} />;
+}
+
+function ConnectedPartner({ conversationId }: { conversationId: string }) {
+  const api = useMainApi();
+  const load = useCallback((signal: AbortSignal) => api.match(conversationId, signal), [api, conversationId]);
+  const resource = useResource(load, 5000);
+  const detail = resource.data;
+  const profile = detail ? profileCard(detail.profile) : undefined;
+  const intimacyStage = detail ? detail.visibleStage + 1 : 0;
   const progress = `${(intimacyStage / stages.length) * 100}%` as `${number}%`;
   const profileDetails = [profile?.goal, profile?.area].filter(Boolean).join('・');
-
-  const unlockNextStage = () => {
-    setIntimacyStage((current) => Math.min(stages.length, current + 1));
+  const busy = useRef(false);
+  const explainStage = () => Alert.alert('段階公開について', '双方が会話した日数・デイリー回答と、写真の所有者の同意に応じて公開されます。タップだけでは解放されません。');
+  const changeConsent = async (stage: number, consent: boolean) => {
+    if (busy.current) return;
+    busy.current = true;
+    try { await api.grant(conversationId, stage, consent); void resource.refresh(); }
+    catch (error) { Alert.alert('変更できませんでした', error instanceof Error ? error.message : '再度お試しください。'); }
+    finally { busy.current = false; }
   };
+  const openConsent = () => {
+    if (!detail) return;
+    const next = Math.min(detail.progress.stage, detail.grantedStage + 1);
+    Alert.alert('自分の写真の公開', 'この相手に見せる自分の写真を管理します。同意は30日で期限切れになります。', [
+      { text: 'キャンセル', style: 'cancel' },
+      ...(detail.grantedStage > 0 ? [{ text: '追加公開を取り消す', style: 'destructive' as const, onPress: () => void changeConsent(1, false) }] : []),
+      ...(next > detail.grantedStage ? [{ text: `${stages[next].label}まで公開に同意`, onPress: () => void changeConsent(next, true) }] : []),
+    ]);
+  };
+  const capture = detail?.captures.find(c => c.stage === detail.visibleStage);
 
   return (
     <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
@@ -49,7 +66,7 @@ export default function PartnerProfileScreen() {
             <Ionicons name="chevron-back" size={25} color={colors.primary} />
           </Pressable>
           <Text numberOfLines={1} style={styles.headerTitle}>
-            {conversation?.name ?? profile?.name ?? 'プロフィール'}
+            {profile?.name ?? 'プロフィール'}
           </Text>
         </View>
 
@@ -57,13 +74,15 @@ export default function PartnerProfileScreen() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
+          <RequestState loading={resource.loading && !detail} error={resource.error} onRetry={() => void resource.refresh()} />
           <ProgressiveProfilePhoto
+            captureId={capture?.id}
             intimacyStage={intimacyStage}
-            onUnlock={unlockNextStage}
+            onUnlock={explainStage}
           />
 
           <View style={styles.details}>
-            <Text style={styles.age}>{profile ? `${profile.age}歳` : '年齢未登録'}</Text>
+            <Text style={styles.age}>{profile?.age ? `${profile.age}歳` : '年齢未登録'}</Text>
             <Text style={styles.goalAndArea}>
               {profileDetails || 'プロフィール情報を登録してください'}
             </Text>
@@ -80,6 +99,8 @@ export default function PartnerProfileScreen() {
             >
               <View style={[styles.progressFill, { width: progress }]} />
             </View>
+            <Text style={styles.goalAndArea}>双方の会話 {detail?.progress.mutualDays ?? 0}日・共同回答 {detail?.progress.sharedAnswers ?? 0}件</Text>
+            <Pressable accessibilityRole="button" disabled={!detail} onPress={openConsent} style={{ paddingVertical: 16 }}><Text style={{ color: colors.primary }}>自分の写真の公開同意を管理</Text></Pressable>
             <View style={styles.stageList}>
               {stages.map((stage) => (
                 <IntimacyStageRow
@@ -87,7 +108,7 @@ export default function PartnerProfileScreen() {
                   stageNumber={stage.number}
                   label={stage.label}
                   intimacyStage={intimacyStage}
-                  onUnlock={unlockNextStage}
+                  onUnlock={explainStage}
                 />
               ))}
             </View>

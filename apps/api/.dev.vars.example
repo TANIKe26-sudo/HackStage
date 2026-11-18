@@ -4,6 +4,6 @@ DATE_LOCATION_KEY=base64-encoded-32-byte-aes-key
 EXPO_ACCESS_TOKEN=
 ALLOWED_ORIGINS=http://localhost:8081
 ADMIN_SAFETY_KEY=replace-me
-ADMIN_VERIFICATION_KEY=replace-me
+ADMIN_USERS_KEY=replace-me
 ADMIN_CONTENT_KEY=replace-me
 ADMIN_AUDIT_KEY=replace-me

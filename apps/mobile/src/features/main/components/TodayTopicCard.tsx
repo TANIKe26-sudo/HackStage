@@ -2,18 +2,19 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing } from '../../../theme/tokens';
 
-const todayTopic = '最近うれしかったことは？';
 
-export function TodayTopicCard({ onAnswer }: { onAnswer: () => void }) {
+export function TodayTopicCard({ onAnswer, topic, available }: { onAnswer: () => void; topic: string; available: boolean }) {
   return (
     <View style={styles.card}>
       <View style={styles.topicContent}>
         <Text style={styles.heading}>今日のお題</Text>
-        <Text style={styles.topic}>{todayTopic}</Text>
+        <Text style={styles.topic}>{topic}</Text>
       </View>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="今日のお題に回答する"
+        disabled={!available}
+        accessibilityState={{ disabled: !available }}
         onPress={onAnswer}
         style={({ pressed }) => [styles.answerButton, pressed && styles.pressed]}
       >

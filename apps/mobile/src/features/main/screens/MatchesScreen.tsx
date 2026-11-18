@@ -1,24 +1,33 @@
 import { useMemo, useState } from 'react';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '../../../theme/tokens';
 import { ConversationCard } from '../components/ConversationCard';
 import { MainTabBar, type MainTabId } from '../components/MainTabBar';
-import { demoConversations } from '../data/demoConversations';
+import { timeLabel, useMainApi } from '../api/client';
+import { useResource } from '../api/useResource';
+import { RequestState } from '../components/RequestState';
 
 export default function MatchesScreen() {
+  const api = useMainApi();
+  const resource = useResource(api.matches, 5000);
   const [searchText, setSearchText] = useState('');
   const conversations = useMemo(() => {
+    const rows = (resource.data?.matches ?? []).map(m => ({
+      id: m.id, captureId: m.capture_id, name: m.display_name, lastMessage: m.last_message ?? 'マッチしました。会話を始めましょう。',
+      updatedAt: new Date(m.updated_at).toLocaleDateString() === new Date().toLocaleDateString()
+        ? timeLabel(m.updated_at) : new Date(m.updated_at).toLocaleDateString('ja-JP'), hasUnread: m.unread_count > 0,
+    }));
     const normalizedSearch = searchText.trim().toLowerCase();
-    if (!normalizedSearch) return demoConversations;
+    if (!normalizedSearch) return rows;
 
-    return demoConversations.filter((conversation) =>
+    return rows.filter((conversation) =>
       `${conversation.name} ${conversation.lastMessage}`.toLowerCase().includes(normalizedSearch),
     );
-  }, [searchText]);
+  }, [searchText, resource.data]);
 
   const handleTabPress = (tab: MainTabId) => {
     if (tab === 'search') router.replace('/discover');
@@ -48,11 +57,13 @@ export default function MatchesScreen() {
           </View>
 
           <ScrollView
+            refreshControl={<RefreshControl refreshing={resource.loading} onRefresh={() => void resource.refresh()} />}
             style={styles.list}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
+            <RequestState loading={resource.loading && !resource.data} error={resource.error} onRetry={() => void resource.refresh()} />
             {conversations.length > 0 ? (
               conversations.map((conversation) => (
                 <ConversationCard
@@ -67,7 +78,7 @@ export default function MatchesScreen() {
                 />
               ))
             ) : (
-              <Text style={styles.emptyMessage}>トークが見つかりません</Text>
+              !resource.loading && !resource.error ? <Text style={styles.emptyMessage}>トークが見つかりません</Text> : null
             )}
           </ScrollView>
         </View>

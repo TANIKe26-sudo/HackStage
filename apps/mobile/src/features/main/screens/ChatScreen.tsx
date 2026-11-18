@@ -1,7 +1,8 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,31 +17,61 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '../../../theme/tokens';
 import { TodayTopicCard } from '../components/TodayTopicCard';
-import { demoChats, type ChatMessage } from '../data/demoChats';
-import { demoConversations } from '../data/demoConversations';
+import { useMainApi, timeLabel, type Message } from '../api/client';
+import { useResource } from '../api/useResource';
+import { ProtectedPhoto } from '../components/ProtectedPhoto';
+import { RequestState } from '../components/RequestState';
 
 export default function ChatScreen() {
   const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
-  const conversation = demoConversations.find((item) => item.id === conversationId);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => demoChats[conversationId] ?? []);
+  return <ConnectedChat key={conversationId} conversationId={conversationId} />;
+}
+
+function ConnectedChat({ conversationId }: { conversationId: string }) {
+  const api = useMainApi();
+  const load = useCallback(async (signal: AbortSignal) => {
+    const [match, page, daily] = await Promise.all([api.match(conversationId, signal), api.messages(conversationId, signal), api.daily(signal)]);
+    return { match, page, daily };
+  }, [api, conversationId]);
+  const resource = useResource(load, 4000);
+  const conversation = resource.data?.match.profile;
+  const [older, setOlder] = useState<{ messages: Message[]; nextBefore: number | null } | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState('');
   const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   const messageList = useRef<ScrollViewInstance | null>(null);
-
+  const messages = Array.from(new Map([...(older?.messages ?? []), ...(resource.data?.page.messages ?? [])].map(m => [m.id, m])).values()).sort((a, b) => a.sequence - b.sequence);
+  const latestSequence = resource.data?.page.messages.at(-1)?.sequence;
+  const nextBefore = older ? older.nextBefore : resource.data?.page.nextBefore;
   useEffect(() => {
-    messageList.current?.scrollToEnd({ animated: true });
-  }, [messages]);
-
-  const sendMessage = () => {
-    const text = draft.trim();
-    if (!text) return;
-
-    const now = new Date();
-    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    setMessages((current) => [
-      ...current,
-      { id: `${conversationId}-${Date.now()}`, sender: 'me', text, time },
-    ]);
-    setDraft('');
+    if (latestSequence) {
+      void api.read(conversationId, latestSequence).catch(() => undefined);
+      messageList.current?.scrollToEnd({ animated: true });
+    }
+  }, [api, conversationId, latestSequence]);
+  const loadOlder = async () => {
+    if (!nextBefore || loadingOlder) return;
+    setLoadingOlder(true); setOlderError('');
+    try {
+      const page = await api.messages(conversationId, undefined, nextBefore);
+      setOlder(current => ({ messages: [...page.messages, ...(current?.messages ?? [])], nextBefore: page.nextBefore }));
+    } catch (error) { setOlderError(error instanceof Error ? error.message : '過去の会話を取得できませんでした。'); }
+    finally { setLoadingOlder(false); }
+  };
+  const sendMessage = async () => {
+    const submitted = draft, text = submitted.trim();
+    if (!text || sendingRef.current) return;
+    sendingRef.current = true; setSending(true);
+    try {
+      const result = await api.send(conversationId, text);
+      setDraft(current => current === submitted ? '' : current);
+      if (result.warning) Alert.alert('安全のための確認', result.warning);
+      void resource.refresh();
+    } catch (error) {
+      Alert.alert('送信できませんでした', error instanceof Error ? error.message : '再度お試しください。');
+    } finally { sendingRef.current = false; setSending(false); }
   };
 
   if (!conversation) {
@@ -50,15 +81,12 @@ export default function ChatScreen() {
           <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={styles.notFoundText}>トークが見つかりません</Text>
+          <RequestState loading={resource.loading} error={resource.error} onRetry={() => void resource.refresh()} />
         </View>
       </SafeAreaView>
     );
   }
 
-  const dateLabel = /^\d{2}:\d{2}$/.test(conversation.updatedAt)
-    ? '今日'
-    : conversation.updatedAt;
 
   return (
     <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
@@ -77,11 +105,11 @@ export default function ChatScreen() {
           </Pressable>
 
           <View style={styles.avatar}>
-            <Text style={styles.avatarLabel}>No image</Text>
+            <ProtectedPhoto captureId={conversation.capture_id} />
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`${conversation.name}さんのプロフィールを表示`}
+            accessibilityLabel={`${conversation.display_name}さんのプロフィールを表示`}
             onPress={() =>
               router.push({
                 pathname: '/partner-profile/[conversationId]',
@@ -91,13 +119,16 @@ export default function ChatScreen() {
             style={({ pressed }) => [styles.nameButton, pressed && styles.pressed]}
           >
             <Text numberOfLines={1} style={styles.name}>
-              {conversation.name}
+              {conversation.display_name}
             </Text>
           </Pressable>
           <View style={styles.headerSpacer} />
         </View>
 
+        <RequestState loading={false} error={resource.error} onRetry={() => void resource.refresh()} />
         <TodayTopicCard
+          topic={resource.data?.daily.topic?.prompt ?? '今日のお題はまだ登録されていません'}
+          available={!!resource.data?.daily.topic}
           onAnswer={() =>
             router.push({
               pathname: '/daily-topic/[conversationId]',
@@ -114,33 +145,35 @@ export default function ChatScreen() {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.datePill}>
-            <Text style={styles.dateLabel}>{dateLabel}</Text>
-          </View>
-
-          {messages.map((message) => {
-            const isMine = message.sender === 'me';
-
+          {nextBefore ? <Pressable accessibilityRole="button" disabled={loadingOlder} onPress={() => void loadOlder()}><Text style={styles.dateLabel}>{loadingOlder ? '読み込み中…' : '過去のメッセージを読む'}</Text></Pressable> : null}
+          <RequestState loading={false} error={olderError || undefined} onRetry={() => void loadOlder()} />
+          {messages.map((message, index) => {
+            const isMine = message.sender_id === resource.data?.page.me;
+            const date = new Date(message.created_at).toLocaleDateString('ja-JP');
+            const showDate = index === 0 || date !== new Date(messages[index - 1].created_at).toLocaleDateString('ja-JP');
             return (
+              <View key={message.id}>
+                {showDate ? <View style={styles.datePill}><Text style={styles.dateLabel}>{date}</Text></View> : null}
               <View
-                key={message.id}
                 style={[styles.messageRow, isMine ? styles.myMessageRow : styles.theirMessageRow]}
               >
                 {!isMine ? (
                   <View style={styles.messageAvatar}>
-                    <Text style={styles.messageAvatarLabel}>No image</Text>
+                    <ProtectedPhoto captureId={conversation.capture_id} />
                   </View>
                 ) : null}
                 <View style={[styles.messageColumn, isMine && styles.myMessageColumn]}>
                   <View style={[styles.bubble, isMine ? styles.myBubble : styles.theirBubble]}>
                     <Text style={[styles.messageText, isMine && styles.myMessageText]}>
-                      {message.text}
+                      {message.body}
                     </Text>
                   </View>
                   <Text style={[styles.messageTime, isMine && styles.myMessageTime]}>
-                    {message.time}
+                    {timeLabel(message.created_at)}
                   </Text>
+                  {message.warning ? <Text style={styles.messageTime}>{message.warning}</Text> : null}
                 </View>
+              </View>
               </View>
             );
           })}
@@ -150,6 +183,7 @@ export default function ChatScreen() {
           <TextInput
             accessibilityLabel="メッセージを入力"
             multiline
+            maxLength={2000}
             value={draft}
             onChangeText={setDraft}
             placeholder="メッセージを入力"
@@ -159,9 +193,9 @@ export default function ChatScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="メッセージを送信"
-            accessibilityState={{ disabled: !draft.trim() }}
-            disabled={!draft.trim()}
-            onPress={sendMessage}
+            accessibilityState={{ disabled: sending || !draft.trim() }}
+            disabled={sending || !draft.trim()}
+            onPress={() => void sendMessage()}
             style={({ pressed }) => [
               styles.sendButton,
               !draft.trim() && styles.sendButtonDisabled,

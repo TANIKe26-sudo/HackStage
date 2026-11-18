@@ -1,7 +1,10 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { bodyLimit } from 'hono/body-limit';
+import { registerMobileRoutes, visibleStage } from './cloudflare/mobile';
+import { imageVariants } from './cloudflare/images';
 
-interface Env {
+export interface Env {
   DB: D1Database;
   CAPTURES: R2Bucket;
   SESSION_SECRET: string;
@@ -10,15 +13,16 @@ interface Env {
   EXPO_ACCESS_TOKEN?: string;
   ALLOWED_ORIGINS?: string;
   ADMIN_SAFETY_KEY?: string;
-  ADMIN_VERIFICATION_KEY?: string;
+  ADMIN_USERS_KEY?: string;
   ADMIN_CONTENT_KEY?: string;
   ADMIN_AUDIT_KEY?: string;
 }
 type Vars = { userId: string };
-type AppEnv = { Bindings: Env; Variables: Vars };
+export type AppEnv = { Bindings: Env; Variables: Vars };
 type UserRow = { id: string; status: string; email: string };
 
 const app = new Hono<AppEnv>();
+app.use('*', bodyLimit({ maxSize: 10 * 1024 * 1024, onError: c => c.json({ error: 'request_too_large' }, 413) }));
 const now = () => new Date().toISOString();
 const id = () => crypto.randomUUID();
 const json = (c: any, body: unknown, status = 200) => c.json(body, status);
@@ -139,7 +143,7 @@ app.post('/auth/signup', async (c) => {
       c.env.DB.prepare('INSERT INTO users(id,google_sub,email,email_verified,created_at,updated_at) VALUES(?,?,?,0,?,?)').bind(userId, `password:${userId}`, email, time, time),
       c.env.DB.prepare('INSERT INTO password_credentials(user_id,password_hash,created_at,updated_at) VALUES(?,?,?,?)').bind(userId, await hashPassword(password), time, time),
       c.env.DB.prepare('INSERT INTO profiles(user_id,updated_at) VALUES(?,?)').bind(userId, time),
-      c.env.DB.prepare('INSERT INTO age_verifications(user_id,status) VALUES(?,\'pending\')').bind(userId),
+      c.env.DB.prepare('INSERT OR IGNORE INTO user_contact_identifiers(user_id,contact_hash) VALUES(?,?)').bind(userId, await hmac(c.env.CONTACT_HASH_KEY, email)),
     ]);
   } catch {
     if (await c.env.DB.prepare('SELECT 1 FROM users WHERE email=?').bind(email).first()) return json(c, { error: 'email_already_registered' }, 409);
@@ -161,6 +165,7 @@ app.post('/auth/login', async (c) => {
   const valid = await verifyPassword(password, user?.password_hash ?? `pbkdf2_sha256$${passwordIterations}$00000000000000000000000000000000$${'0'.repeat(64)}`);
   if (!user || !valid) return json(c, { error: 'invalid_credentials' }, 401);
   if (user.status !== 'active') return json(c, { error: 'account_unavailable' }, 403);
+  await c.env.DB.prepare('INSERT OR IGNORE INTO user_contact_identifiers(user_id,contact_hash) VALUES(?,?)').bind(user.id, await hmac(c.env.CONTACT_HASH_KEY, user.email)).run();
   const session = await createSession(c, user.id, typeof input.deviceName === 'string' ? input.deviceName : '');
   return c.json({ token: session.token, expiresAt: session.expiresAt, user: { id: user.id, email: user.email, status: user.status } });
 });
@@ -173,7 +178,7 @@ app.post('/auth/logout', async (c) => {
 
 app.get('/api/me', async (c) => {
   const userId = c.get('userId');
-  const profile = await c.env.DB.prepare("SELECT p.*,u.email,u.status,a.status AS age_verification,(SELECT id FROM captures WHERE owner_id=p.user_id AND stage=0 ORDER BY created_at DESC LIMIT 1) AS profile_photo_capture_id FROM profiles p JOIN users u ON u.id=p.user_id LEFT JOIN age_verifications a ON a.user_id=p.user_id WHERE p.user_id=?").bind(userId).first();
+  const profile = await c.env.DB.prepare("SELECT p.*,u.email,u.status,(SELECT id FROM captures WHERE owner_id=p.user_id AND stage=0 ORDER BY created_at DESC LIMIT 1) AS profile_photo_capture_id FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=?").bind(userId).first();
   return c.json({ profile });
 });
 app.patch('/api/profile', async (c) => {
@@ -182,6 +187,8 @@ app.patch('/api/profile', async (c) => {
   const sets: string[] = []; const values: unknown[] = [];
   for (const key of allowed) if (Object.hasOwn(value, key)) {
     const field = value[key];
+    if (key !== 'birth_year' && typeof field !== 'string') return json(c, { error: `invalid_${key}` }, 400);
+    if (key === 'location_scope' && !['hidden', 'area', 'meetup'].includes(String(field))) return json(c, { error: 'invalid_location_scope' }, 400);
     if (key === 'birth_year' && (!Number.isInteger(field) || Number(field) < 1900 || Number(field) > new Date().getUTCFullYear() - 18)) return json(c, { error: 'invalid_birth_year' }, 400);
     if (key === 'throat_class' && !['present', 'absent', 'pending'].includes(String(field))) return json(c, { error: 'invalid_throat_class' }, 400);
     const max = key === 'bio' ? 300 : key === 'display_name' ? 30 : key === 'area' ? 80 : 100;
@@ -194,73 +201,7 @@ app.patch('/api/profile', async (c) => {
   return c.json({ ok: true });
 });
 
-app.get('/api/discover', async (c) => {
-  const me = c.get('userId'); const take = Math.min(30, Math.max(1, Number(c.req.query('limit') ?? 10)));
-  const ageCheck = await c.env.DB.prepare('SELECT status FROM age_verifications WHERE user_id=?').bind(me).first<{ status: string }>();
-  if (ageCheck?.status !== 'verified') return json(c, { error: 'age_verification_required' }, 403);
-  const prefs = await c.env.DB.prepare('SELECT purpose,conversation_pace,throat_class FROM profiles WHERE user_id=?').bind(me).first<any>();
-  const candidates = await c.env.DB.prepare(`SELECT p.user_id,p.display_name,p.birth_year,p.area,p.bio,p.purpose,p.conversation_pace,p.throat_class,
-    (SELECT id FROM captures WHERE owner_id=p.user_id AND stage=0 ORDER BY created_at DESC LIMIT 1) AS initial_capture_id,
-    (SELECT COUNT(*) FROM discovery_impressions d WHERE d.candidate_id=p.user_id) AS exposure
-    FROM profiles p JOIN users u ON u.id=p.user_id JOIN age_verifications av ON av.user_id=u.id AND av.status='verified'
-    WHERE p.user_id<>? AND u.status='active' AND p.throat_class<> 'pending'
-      AND (? IS NULL OR p.purpose IS NULL OR p.purpose=?) AND (? IS NULL OR p.conversation_pace IS NULL OR p.conversation_pace=?)
-      AND NOT EXISTS(SELECT 1 FROM blocks b WHERE (b.blocker_id=? AND b.blocked_id=p.user_id) OR (b.blocker_id=p.user_id AND b.blocked_id=?))
-      AND NOT EXISTS(SELECT 1 FROM likes l WHERE l.from_user=? AND l.to_user=p.user_id)
-      AND NOT EXISTS(SELECT 1 FROM discovery_impressions d WHERE d.viewer_id=? AND d.candidate_id=p.user_id AND d.shown_at>datetime('now','-30 days'))
-      AND NOT EXISTS(SELECT 1 FROM user_contact_identifiers ci JOIN contact_hides ch ON ch.user_id=? AND ch.contact_hash=ci.contact_hash WHERE ci.user_id=p.user_id)
-    ORDER BY exposure ASC, p.user_id LIMIT ?`).bind(me, prefs?.purpose ?? null, prefs?.purpose ?? null, prefs?.conversation_pace ?? null, prefs?.conversation_pace ?? null, me, me, me, me, me, take).all<any>();
-  const list = candidates.results ?? [];
-  for (const candidate of list) await c.env.DB.prepare('INSERT OR IGNORE INTO discovery_impressions(viewer_id,candidate_id,shown_at) VALUES(?,?,?)').bind(me, candidate.user_id, now()).run();
-  return c.json({ candidates: list, candidateCount: list.length, notice: list.length < take ? '候補が少なくなっています。条件を広げるか、後でもう一度お試しください。' : null, paidPriority: false });
-});
-app.post('/api/likes', async (c) => {
-  const { toUserId } = await c.req.json<{ toUserId?: string }>(); const from = c.get('userId');
-  if (!toUserId || toUserId === from) return json(c, { error: 'invalid_target' }, 400);
-  if (await c.env.DB.prepare('SELECT 1 FROM blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?)').bind(from, toUserId, toUserId, from).first()) return json(c, { error: 'not_available' }, 404);
-  await c.env.DB.prepare('INSERT OR IGNORE INTO likes(from_user,to_user,created_at) VALUES(?,?,?)').bind(from, toUserId, now()).run();
-  const mutual = await c.env.DB.prepare('SELECT 1 FROM likes WHERE from_user=? AND to_user=?').bind(toUserId, from).first();
-  if (!mutual) { await notify(c.env.DB, toUserId, 'like', { fromUserId: from }); return c.json({ matched: false }); }
-  const [low, high] = [from, toUserId].sort(); const matchId = id();
-  await c.env.DB.prepare('INSERT OR IGNORE INTO matches(id,user_low,user_high,created_at) VALUES(?,?,?,?)').bind(matchId, low, high, now()).run();
-  const existing = await c.env.DB.prepare('SELECT id FROM matches WHERE user_low=? AND user_high=?').bind(low, high).first<{ id: string }>();
-  await Promise.all([notify(c.env.DB, from, 'match', { matchId: existing?.id ?? matchId }), notify(c.env.DB, toUserId, 'match', { matchId: existing?.id ?? matchId })]);
-  return c.json({ matched: true, matchId: existing?.id ?? matchId }, 201);
-});
-app.get('/api/matches', async (c) => {
-  const me = c.get('userId'); return c.json(await c.env.DB.prepare(`SELECT m.id,m.created_at,p.user_id AS other_user_id,p.display_name
-    FROM matches m JOIN profiles p ON p.user_id=CASE WHEN m.user_low=? THEN m.user_high ELSE m.user_low END
-    WHERE m.user_low=? OR m.user_high=? ORDER BY m.created_at DESC`).bind(me, me, me).all());
-});
-app.get('/api/matches/:id/messages', async (c) => {
-  const me = c.get('userId'); const match = await c.env.DB.prepare('SELECT id FROM matches WHERE id=? AND (user_low=? OR user_high=?)').bind(c.req.param('id'), me, me).first();
-  if (!match) return json(c, { error: 'match_not_found' }, 404);
-  return c.json(await c.env.DB.prepare('SELECT id,sender_id,body,warning,created_at FROM messages WHERE match_id=? AND deleted_at IS NULL ORDER BY created_at LIMIT 200').bind(c.req.param('id')).all());
-});
-app.post('/api/matches/:id/messages', async (c) => {
-  const me = c.get('userId'); const match = await c.env.DB.prepare('SELECT user_low,user_high FROM matches WHERE id=? AND (user_low=? OR user_high=?)').bind(c.req.param('id'), me, me).first<{ user_low: string; user_high: string }>();
-  if (!match) return json(c, { error: 'match_not_found' }, 404);
-  const input = await c.req.json<{ body?: string }>(); const body = input.body?.trim();
-  if (!body || body.length > 2000) return json(c, { error: 'invalid_message' }, 400);
-  const warning = /(https?:\/\/|www\.|投資|暗号資産|仮想通貨|副業|必ず儲かる)/i.test(body) ? '外部リンクや勧誘に注意してください。個人情報や送金を求められた場合は通報してください。' : null;
-  const messageId = id(); const other = match.user_low === me ? match.user_high : match.user_low;
-  await c.env.DB.prepare('INSERT INTO messages(id,match_id,sender_id,body,warning,created_at) VALUES(?,?,?,?,?,?)').bind(messageId, c.req.param('id'), me, body, warning, now()).run();
-  if (warning) await c.env.DB.prepare('INSERT INTO safety_flags(id,user_id,message_id,reason,created_at) VALUES(?,?,?,?,?)').bind(id(), me, messageId, 'automated_link_or_solicitation_signal', now()).run();
-  await notify(c.env.DB, other, 'message', { matchId: c.req.param('id'), messageId });
-  return c.json({ id: messageId, warning }, 201);
-});
-
-app.get('/api/daily', async (c) => {
-  const day = new Date().toISOString().slice(0, 10); const topic = await c.env.DB.prepare('SELECT * FROM daily_topics WHERE topic_date=?').bind(day).first<any>();
-  const answer = topic ? await c.env.DB.prepare('SELECT answer,created_at FROM daily_answers WHERE user_id=? AND topic_id=?').bind(c.get('userId'), topic.id).first() : null;
-  return c.json({ topic: topic ?? null, answer });
-});
-app.post('/api/daily/answers', async (c) => {
-  const { topicId, answer } = await c.req.json<{ topicId?: string; answer?: string }>();
-  if (!topicId || !answer?.trim() || answer.length > 2000) return json(c, { error: 'invalid_answer' }, 400);
-  await c.env.DB.prepare('INSERT INTO daily_answers(user_id,topic_id,answer,created_at) VALUES(?,?,?,?) ON CONFLICT(user_id,topic_id) DO UPDATE SET answer=excluded.answer,created_at=excluded.created_at').bind(c.get('userId'), topicId, answer.trim(), now()).run();
-  return c.json({ ok: true });
-});
+registerMobileRoutes(app);
 
 app.post('/api/captures', async (c) => {
   const { dataUrl, stage = 0 } = await c.req.json<{ dataUrl?: string; stage?: number }>();
@@ -270,38 +211,37 @@ app.post('/api/captures', async (c) => {
   const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   const png = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
   if (!(jpeg && match[1] === 'jpeg') && !(png && match[1] === 'png')) return json(c, { error: 'invalid_image_signature' }, 400);
-  const captureId = id(); const key = `${c.get('userId')}/${captureId}`; const type = `image/${match[1]}`;
-  await c.env.CAPTURES.put(key, bytes, { httpMetadata: { contentType: type, cacheControl: 'private, no-store' } });
-  await c.env.DB.prepare('INSERT INTO captures(id,owner_id,stage,object_key,media_type,created_at) VALUES(?,?,?,?,?,?)').bind(captureId, c.get('userId'), stage, key, type, now()).run();
-  return c.json({ id: captureId, stage }, 201);
+  let variants: Uint8Array[];
+  try { variants = imageVariants(bytes, `image/${match[1]}`); }
+  catch { return json(c, { error: 'invalid_capture_size' }, 400); }
+  const group = id(), created = now(), records = variants.map((_, stage) => ({ id: id(), stage, key: `public/${c.get('userId')}/${group}/${stage}` }));
+  try {
+    for (const record of records) await c.env.CAPTURES.put(record.key, variants[record.stage], { httpMetadata: { contentType: 'image/jpeg', cacheControl: 'private, no-store' } });
+    await c.env.DB.batch(records.map(record => c.env.DB.prepare('INSERT INTO captures(id,owner_id,stage,object_key,media_type,created_at) VALUES(?,?,?,?,?,?)').bind(record.id, c.get('userId'), record.stage, record.key, 'image/jpeg', created)));
+  } catch (error) {
+    for (const record of records) await c.env.CAPTURES.delete(record.key);
+    throw error;
+  }
+  return c.json({ id: records[0].id, stage: 0 }, 201);
 });
 app.delete('/api/captures/:id', async (c) => {
   const capture = await c.env.DB.prepare('SELECT object_key FROM captures WHERE id=? AND owner_id=?').bind(c.req.param('id'), c.get('userId')).first<{ object_key: string }>();
   if (!capture) return json(c, { error: 'not_found' }, 404);
-  await c.env.CAPTURES.delete(capture.object_key); await c.env.DB.prepare('DELETE FROM captures WHERE id=?').bind(c.req.param('id')).run();
-  await audit(c.env.DB, 'capture_deleted', c.get('userId'), c.req.param('id')); return c.json({ deleted: true });
+  const keys = capture.object_key.startsWith('public/') ? Array.from({ length: 5 }, (_, stage) => capture.object_key.replace(/\/\d$/, `/${stage}`)) : [capture.object_key];
+  for (const key of keys) { await c.env.CAPTURES.delete(key); await c.env.DB.prepare('DELETE FROM captures WHERE owner_id=? AND object_key=?').bind(c.get('userId'), key).run(); }
+  return c.json({ deleted: true });
 });
 app.get('/api/captures/:id/image', async (c) => {
   const me = c.get('userId'); const capture = await c.env.DB.prepare('SELECT * FROM captures WHERE id=?').bind(c.req.param('id')).first<any>();
   if (!capture) return json(c, { error: 'not_found' }, 404);
   if (capture.owner_id !== me) {
-    const wasIntroduced = await c.env.DB.prepare('SELECT 1 FROM discovery_impressions WHERE viewer_id=? AND candidate_id=? AND shown_at>datetime(\'now\',\'-30 days\') AND ?=0').bind(me, capture.owner_id, capture.stage).first();
-    const match = await c.env.DB.prepare('SELECT 1 FROM matches WHERE (user_low=? AND user_high=?) OR (user_low=? AND user_high=?)').bind(me, capture.owner_id, capture.owner_id, me).first();
-    const grant = await c.env.DB.prepare('SELECT 1 FROM stage_grants WHERE owner_id=? AND viewer_id=? AND stage>=? AND revoked_at IS NULL AND expires_at>?').bind(capture.owner_id, me, capture.stage, now()).first();
-    if (!wasIntroduced && (!match || !grant)) return json(c, { error: 'forbidden' }, 403);
+    if (!capture.object_key.startsWith('public/')) return json(c, { error: 'forbidden' }, 403);
+    const allowed = await visibleStage(c.env.DB, me, capture.owner_id);
+    if (capture.stage > allowed) return json(c, { error: 'forbidden' }, 403);
   }
   const obj = await c.env.CAPTURES.get(capture.object_key); if (!obj) return json(c, { error: 'not_found' }, 404);
   await c.env.DB.prepare('INSERT INTO image_access_logs(id,capture_id,viewer_id,accessed_at) VALUES(?,?,?,?)').bind(id(), capture.id, me, now()).run();
   return new Response(obj.body, { headers: { 'Content-Type': capture.media_type, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } });
-});
-app.post('/api/matches/:id/profile-stage', async (c) => {
-  const me = c.get('userId'); const { viewerId, stage, consent } = await c.req.json<{ viewerId?: string; stage?: number; consent?: boolean }>();
-  if (!viewerId || !Number.isInteger(stage) || stage! < 0 || stage! > 4) return json(c, { error: 'invalid_grant' }, 400);
-  const match = await c.env.DB.prepare('SELECT 1 FROM matches WHERE id=? AND ((user_low=? AND user_high=?) OR (user_low=? AND user_high=?))').bind(c.req.param('id'), me, viewerId, viewerId, me).first();
-  if (!match) return json(c, { error: 'match_not_found' }, 404);
-  if (!consent) { await c.env.DB.prepare('UPDATE stage_grants SET revoked_at=? WHERE owner_id=? AND viewer_id=? AND stage=?').bind(now(), me, viewerId, stage).run(); return c.json({ revoked: true }); }
-  await c.env.DB.prepare('INSERT INTO stage_grants(owner_id,viewer_id,stage,consented_at,expires_at,revoked_at) VALUES(?,?,?,?,?,NULL) ON CONFLICT(owner_id,viewer_id,stage) DO UPDATE SET consented_at=excluded.consented_at,expires_at=excluded.expires_at,revoked_at=NULL').bind(me, viewerId, stage, now(), new Date(Date.now() + 30 * 86400000).toISOString()).run();
-  await audit(c.env.DB, 'profile_stage_consent', me, viewerId, { stage }); return c.json({ granted: true });
 });
 
 app.post('/api/blocks', async (c) => {
@@ -361,14 +301,14 @@ app.post('/api/matches/:id/date-plans', async (c) => {
 });
 app.post('/api/date-plans/:id/confirm', async (c) => {
   const me = c.get('userId'); const plan = await c.env.DB.prepare('SELECT d.*,m.user_low,m.user_high FROM date_plans d JOIN matches m ON m.id=d.match_id WHERE d.id=? AND (m.user_low=? OR m.user_high=?)').bind(c.req.param('id'), me, me).first<any>();
-  if (!plan) return json(c, { error: 'not_found' }, 404);
+  if (!plan || plan.status === 'cancelled' || plan.share_expires_at <= now()) return json(c, { error: 'not_found' }, 404);
   const { consentToLocation = false } = await c.req.json<{ consentToLocation?: boolean }>(); const low = me === plan.user_low;
-  await c.env.DB.prepare(`UPDATE date_plans SET ${low ? 'confirmed_user_low' : 'confirmed_user_high'}=1,${low ? 'share_consent_user_low' : 'share_consent_user_high'}=?,status='confirmed',updated_at=? WHERE id=?`).bind(consentToLocation ? 1 : 0, now(), plan.id).run();
+  await c.env.DB.prepare(`UPDATE date_plans SET ${low ? 'confirmed_user_low' : 'confirmed_user_high'}=1,${low ? 'share_consent_user_low' : 'share_consent_user_high'}=?,status=CASE WHEN ${low ? 'confirmed_user_high' : 'confirmed_user_low'}=1 THEN 'confirmed' ELSE 'proposed' END,updated_at=? WHERE id=?`).bind(consentToLocation ? 1 : 0, now(), plan.id).run();
   await audit(c.env.DB, 'date_plan_confirmed', me, plan.id, { consentToLocation }); return c.json({ confirmed: true });
 });
 app.post('/api/date-plans/:id/arrive', async (c) => {
   const me = c.get('userId'); const plan = await c.env.DB.prepare('SELECT d.*,m.user_low,m.user_high FROM date_plans d JOIN matches m ON m.id=d.match_id WHERE d.id=? AND (m.user_low=? OR m.user_high=?)').bind(c.req.param('id'), me, me).first<any>();
-  if (!plan || plan.status !== 'confirmed') return json(c, { error: 'not_found_or_unconfirmed' }, 404);
+  if (!plan || plan.status !== 'confirmed' || !plan.confirmed_user_low || !plan.confirmed_user_high || plan.share_expires_at <= now()) return json(c, { error: 'not_found_or_unconfirmed' }, 404);
   await c.env.DB.prepare(`UPDATE date_plans SET ${me === plan.user_low ? 'arrived_user_low_at' : 'arrived_user_high_at'}=?,updated_at=? WHERE id=?`).bind(now(), now(), plan.id).run();
   return c.json({ arrived: true });
 });
@@ -379,7 +319,7 @@ app.post('/api/date-plans/:id/cancel', async (c) => {
 app.get('/api/date-plans/:id', async (c) => {
   const me = c.get('userId'); const plan = await c.env.DB.prepare('SELECT d.*,m.user_low,m.user_high FROM date_plans d JOIN matches m ON m.id=d.match_id WHERE d.id=? AND (m.user_low=? OR m.user_high=?)').bind(c.req.param('id'), me, me).first<any>();
   if (!plan) return json(c, { error: 'not_found' }, 404);
-  const bothConsent = plan.share_consent_user_low && plan.share_consent_user_high && plan.confirmed_user_low && plan.confirmed_user_high && plan.share_expires_at > now();
+  const bothConsent = plan.status !== 'cancelled' && plan.share_consent_user_low && plan.share_consent_user_high && plan.confirmed_user_low && plan.confirmed_user_high && plan.share_expires_at > now();
   const exactLocation = bothConsent && plan.exact_location_cipher ? await decrypt(c.env.DATE_LOCATION_KEY, plan.exact_location_cipher) : null;
   return c.json({ id: plan.id, startsAt: plan.starts_at, placeLabel: plan.place_label, exactLocation, status: plan.status, confirmed: { you: me === plan.user_low ? !!plan.confirmed_user_low : !!plan.confirmed_user_high, other: me === plan.user_low ? !!plan.confirmed_user_high : !!plan.confirmed_user_low }, arrived: { you: me === plan.user_low ? plan.arrived_user_low_at : plan.arrived_user_high_at, other: me === plan.user_low ? plan.arrived_user_high_at : plan.arrived_user_low_at } });
 });
@@ -410,7 +350,7 @@ app.post('/api/account/delete', async (c) => {
 
 function adminRole(c: any): string | null {
   const key = c.req.header('x-admin-key'); if (!key) return null;
-  for (const [role, secret] of Object.entries({ safety: c.env.ADMIN_SAFETY_KEY, verification: c.env.ADMIN_VERIFICATION_KEY, content: c.env.ADMIN_CONTENT_KEY, audit: c.env.ADMIN_AUDIT_KEY })) if (secret && key === secret) return role;
+  for (const [role, secret] of Object.entries({ safety: c.env.ADMIN_SAFETY_KEY, users: c.env.ADMIN_USERS_KEY, content: c.env.ADMIN_CONTENT_KEY, audit: c.env.ADMIN_AUDIT_KEY })) if (secret && key === secret) return role;
   return null;
 }
 app.get('/admin/reports', async (c) => { if (!adminRole(c)) return json(c, { error: 'forbidden' }, 403); return c.json(await c.env.DB.prepare('SELECT * FROM reports ORDER BY created_at LIMIT 200').all()); });
@@ -427,14 +367,8 @@ app.post('/admin/daily-topics', async (c) => {
   await c.env.DB.prepare('INSERT INTO daily_topics(id,topic_date,title,prompt,created_by,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(topic_date) DO UPDATE SET title=excluded.title,prompt=excluded.prompt,created_by=excluded.created_by').bind(id(), date, title.slice(0, 120), prompt.slice(0, 1000), 'admin', now()).run();
   return c.json({ ok: true });
 });
-app.patch('/admin/age-verifications/:userId', async (c) => {
-  if (!['verification', 'audit'].includes(adminRole(c) ?? '')) return json(c, { error: 'forbidden' }, 403);
-  const { status } = await c.req.json<{ status?: string }>(); if (!['verified', 'rejected', 'pending'].includes(status ?? '')) return json(c, { error: 'invalid_status' }, 400);
-  await c.env.DB.prepare('UPDATE age_verifications SET status=?,verified_at=?,reviewed_by=? WHERE user_id=?').bind(status, status === 'verified' ? now() : null, 'admin', c.req.param('userId')).run();
-  await audit(c.env.DB, 'age_verification_reviewed', undefined, c.req.param('userId'), { status }); return c.json({ ok: true });
-});
 app.post('/admin/users/:userId/contact-identifier', async (c) => {
-  if (!['verification', 'audit'].includes(adminRole(c) ?? '')) return json(c, { error: 'forbidden' }, 403);
+  if (!['users', 'audit'].includes(adminRole(c) ?? '')) return json(c, { error: 'forbidden' }, 403);
   const { identifier } = await c.req.json<{ identifier?: string }>(); if (!identifier?.trim() || identifier.length > 200) return json(c, { error: 'invalid_identifier' }, 400);
   const contactHash = await hmac(c.env.CONTACT_HASH_KEY, identifier);
   await c.env.DB.prepare('INSERT OR IGNORE INTO user_contact_identifiers(user_id,contact_hash) VALUES(?,?)').bind(c.req.param('userId'), contactHash).run();

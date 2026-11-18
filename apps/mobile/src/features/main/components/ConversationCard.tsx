@@ -1,7 +1,8 @@
+import { ProtectedPhoto } from './ProtectedPhoto';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing } from '../../../theme/tokens';
-import type { Conversation } from '../data/demoConversations';
+import type { Conversation } from '../api/client';
 
 export function ConversationCard({
   conversation,
@@ -18,7 +19,7 @@ export function ConversationCard({
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.photoPlaceholder}>
-        <Text style={styles.noImage}>No image</Text>
+        <ProtectedPhoto captureId={conversation.captureId} />
       </View>
 
       <View style={styles.conversationContent}>

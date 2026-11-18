@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { colors } from '../../../theme/tokens';
 import { AppIcon, type AppIconName } from './AppIcon';
@@ -9,15 +9,16 @@ type ProfileSettingRowProps = {
     'profileEdit' | 'visibility' | 'calendar' | 'location' | 'report' | 'data' | 'hidePeople'
   >;
   label: string;
+  onPress: () => void;
 };
 
-export function ProfileSettingRow({ icon, label }: ProfileSettingRowProps) {
+export function ProfileSettingRow({ icon, label, onPress }: ProfileSettingRowProps) {
   return (
-    <View accessible accessibilityLabel={label} style={styles.row}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={styles.row}>
       <AppIcon name={icon} size={20} color={colors.primary} />
       <Text style={styles.label}>{label}</Text>
       <AppIcon name="chevron" size={18} color={colors.mutedText} />
-    </View>
+    </Pressable>
   );
 }
 

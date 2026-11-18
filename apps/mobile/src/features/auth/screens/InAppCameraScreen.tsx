@@ -1,7 +1,8 @@
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CameraIcon } from '../components/CameraIcon';
@@ -12,6 +13,7 @@ const cameraPreviewColor = '#30282A';
 
 export default function InAppCameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
+  const [captured, setCaptured] = useState<{ uri: string; dataUrl: string; preview: string } | null>(null);
   const cameraRef = useRef<CameraView | null>(null);
   const hasRequestedPermission = useRef(false);
   const [isScreenFocused, setIsScreenFocused] = useState(false);
@@ -60,18 +62,20 @@ export default function InAppCameraScreen() {
     setErrorMessage(null);
 
     try {
-      const picture = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: true });
+      const picture = await cameraRef.current.takePictureAsync({ quality: 0.85 });
       if (!picture.uri) throw new Error('撮影画像が取得できませんでした。');
 
-      setProfilePhotoUri(picture.uri);
-      setProfilePhotoDataUrl(
-        picture.base64 ? `data:image/jpeg;base64,${picture.base64}` : null,
-      );
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace('/sign-up');
-      }
+      const context = ImageManipulator.manipulate(picture.uri);
+      if (picture.width >= picture.height) context.resize({ width: 1280 });
+      else context.resize({ height: 1280 });
+      const rendered = await context.renderAsync();
+      const full = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.85, base64: true });
+      if (!full.base64) throw new Error('撮影画像を読み込めませんでした。');
+      const crop = ImageManipulator.manipulate(full.uri);
+      crop.crop({ originX: Math.floor(full.width * 0.25), originY: Math.floor(full.height * 0.70), width: Math.max(1, Math.floor(full.width * 0.50)), height: Math.max(1, Math.floor(full.height * 0.20)) });
+      const preview = await (await crop.renderAsync()).saveAsync({ format: SaveFormat.JPEG, compress: 0.85 });
+      setCaptured({ uri: full.uri, dataUrl: `data:image/jpeg;base64,${full.base64}`, preview: preview.uri });
+      setIsTakingPicture(false);
     } catch {
       setErrorMessage('撮影に失敗しました。もう一度お試しください。');
       setIsTakingPicture(false);
@@ -86,6 +90,21 @@ export default function InAppCameraScreen() {
       setErrorMessage('カメラを利用できません。端末の設定を確認してください。');
     }
   };
+
+  if (captured) return <SafeAreaView style={styles.safeArea}>
+    <View style={[styles.content, { gap: 20 }]}>
+      <Text style={styles.title}>初期公開する画像の確認</Text>
+      <Text>この切り出し画像が相手に表示されます。首周りが写り、顔が含まれていないことを確認してください。自動検出ではありません。</Text>
+      <Image source={{ uri: captured.preview }} resizeMode="contain" style={{ width: '100%', height: 180 }} />
+      <Pressable accessibilityRole="button" onPress={() => {
+        setCaptured(null); setIsCameraReady(false);
+      }} style={{ padding: 16 }}><Text>撮り直す</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => {
+        setProfilePhotoUri(captured.uri); setProfilePhotoDataUrl(captured.dataUrl);
+        if (router.canGoBack()) router.back(); else router.replace('/sign-up');
+      }} style={{ padding: 16 }}><Text style={{ color: colors.primary }}>この画像で登録する</Text></Pressable>
+    </View>
+  </SafeAreaView>;
 
   return (
     <SafeAreaView style={styles.safeArea}>

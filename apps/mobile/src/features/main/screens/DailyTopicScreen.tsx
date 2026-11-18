@@ -1,35 +1,50 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '../../../theme/tokens';
 import { DailyQuestionCard } from '../components/DailyQuestionCard';
 import { DailyTopicCard } from '../components/DailyTopicCard';
 import { IntimacyUnlockedCard } from '../components/IntimacyUnlockedCard';
-import { dailyTopicQuestion, dailyTopicTasks } from '../data/dailyTopics';
+import { dailyTopicTasks } from '../data/dailyTopics';
+import { useMainApi } from '../api/client';
+import { useResource } from '../api/useResource';
+import { RequestState } from '../components/RequestState';
 
 export default function DailyTopicScreen() {
   const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
-  const [completedTasks, setCompletedTasks] = useState<string[]>(['answer-topic']);
-  const [answer, setAnswer] = useState('');
+  return <ConnectedDaily key={conversationId} conversationId={conversationId} />;
+}
+
+function ConnectedDaily({ conversationId }: { conversationId: string }) {
+  const api = useMainApi();
+  const load = useCallback((signal: AbortSignal) => api.matchDaily(conversationId, signal), [api, conversationId]);
+  const resource = useResource(load, 5000);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
+  const answer = draft ?? resource.data?.answer?.answer ?? '';
+  const completedTasks = dailyTopicTasks.filter(task => resource.data?.tasks[task.id]).map(task => task.id);
   const allTasksComplete = completedTasks.length === dailyTopicTasks.length;
   const progress = completedTasks.length / dailyTopicTasks.length;
-
-  const toggleTask = (taskId: string) => {
-    setCompletedTasks((current) =>
-      current.includes(taskId)
-        ? current.filter((id) => id !== taskId)
-        : [...current, taskId],
-    );
+  const topic = resource.data?.topic;
+  const handleSendAnswer = async () => {
+    if (!topic || !answer.trim() || sendingRef.current) return;
+    sendingRef.current = true; setSending(true);
+    try {
+      await api.answer(topic.id, answer);
+      void resource.refresh();
+      Alert.alert('回答を保存しました');
+    } catch (error) {
+      Alert.alert('保存できませんでした', error instanceof Error ? error.message : '再度お試しください。');
+    } finally { sendingRef.current = false; setSending(false); }
   };
-
-  const handleSendAnswer = () => {
-    setCompletedTasks((current) =>
-      current.includes('answer-topic') ? current : [...current, 'answer-topic'],
-    );
-    setAnswer('');
+  const explainTask = (taskId: string) => {
+    if (taskId === 'answer-topic') Alert.alert('今日のお題', '上の入力欄から回答を送信すると達成されます。');
+    else if (taskId === 'receive-reply') Alert.alert('返信を待ちましょう', '今日、相手からメッセージが届くと達成されます。');
+    else router.back();
   };
 
   return (
@@ -52,11 +67,14 @@ export default function DailyTopicScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          <RequestState loading={resource.loading && !resource.data} error={resource.error} onRetry={() => void resource.refresh()} />
           <DailyQuestionCard
-            question={dailyTopicQuestion}
+            question={topic?.prompt ?? '今日のお題はまだ登録されていません'}
+            disabled={!topic || sending}
+            submitted={!!resource.data?.answer}
             answer={answer}
-            onAnswerChange={setAnswer}
-            onSend={handleSendAnswer}
+            onAnswerChange={setDraft}
+            onSend={() => void handleSendAnswer()}
           />
 
           <View style={styles.progressSection}>
@@ -81,7 +99,7 @@ export default function DailyTopicScreen() {
                 key={task.id}
                 task={task}
                 completed={completedTasks.includes(task.id)}
-                onPress={() => toggleTask(task.id)}
+                onPress={() => explainTask(task.id)}
               />
             ))}
           </View>

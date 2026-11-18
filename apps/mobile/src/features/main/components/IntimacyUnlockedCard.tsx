@@ -1,14 +1,14 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing } from '../../../theme/tokens';
+import { colors } from '../../../theme/tokens';
 
 export function IntimacyUnlockedCard({ onViewProfile }: { onViewProfile: () => void }) {
   return (
     <View style={styles.card}>
       <Ionicons name="heart-outline" size={22} color={colors.primary} />
       <View style={styles.copy}>
-        <Text style={styles.title}>親密度が上がりました！</Text>
+        <Text style={styles.title}>今日の会話を達成しました！</Text>
         <Pressable
           accessibilityRole="link"
           onPress={onViewProfile}

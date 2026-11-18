@@ -8,14 +8,27 @@ export type AuthProfile = {
   purpose: string | null;
   conversation_pace: string | null;
   throat_class: 'present' | 'absent' | 'pending';
-  age_verification: string;
+  user_id: string;
+  location_scope: 'hidden' | 'area' | 'meetup';
   profile_photo_capture_id?: string | null;
 };
 
 type ApiErrorResponse = { error?: string };
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly code?: string) { super(message); }
+}
+
 const errorMessages: Record<string, string> = {
-  age_verification_required: 'プロフィールの登録後、年齢確認が完了するとアプリを利用できます。',
+  request_too_large: '送信する画像が大きすぎます。アプリ内カメラで撮り直してください。',
+  invalid_preferences: '年齢の範囲を18〜120歳で指定してください。',
+  reauthentication_failed: '確認用パスワードが正しくありません。',
+  invalid_capture_size: '画像を読み込めませんでした。アプリ内カメラで撮り直してください。',
+  match_not_found: 'このトークは利用できません。ブロックや退会の可能性があります。',
+  topic_not_available: 'このお題の受付は終了しています。再読み込みしてください。',
+  stage_locked: '公開条件にまだ達していません。会話とデイリーを続けてください。',
+  invalid_message: 'メッセージを1〜2000文字で入力してください。',
+  invalid_answer: '回答を1〜2000文字で入力してください。',
   invalid_email: 'メールアドレスの形式を確認してください。',
   invalid_password: 'パスワードは12〜128文字で入力してください。',
   invalid_credentials: 'メールアドレスまたはパスワードが正しくありません。',
@@ -42,8 +55,15 @@ export async function apiRequest<T extends object = Record<string, unknown>>(
   token?: string,
   init?: RequestInit,
 ): Promise<T> {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (init?.signal?.aborted) controller.abort();
+  init?.signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(abort, 20000);
+  try {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
+    signal: controller.signal,
     headers: {
       'content-type': 'application/json',
       ...(token ? { authorization: `Bearer ${token}` } : {}),
@@ -53,13 +73,17 @@ export async function apiRequest<T extends object = Record<string, unknown>>(
 
   const body = (await response.json().catch(() => ({}))) as ApiErrorResponse & Record<string, unknown>;
   if (!response.ok) {
-    throw new Error(
+    throw new ApiError(
       (body.error && errorMessages[body.error]) ||
-        '通信に失敗しました。APIの起動状態と接続先を確認してください。',
+        '通信に失敗しました。APIの起動状態と接続先を確認してください。', response.status, body.error,
     );
   }
 
   return body as T;
+  } catch (error) {
+    if (controller.signal.aborted && !init?.signal?.aborted) throw new Error('API接続がタイムアウトしました。接続先とWi-Fiを確認してください。');
+    throw error;
+  } finally { clearTimeout(timer); init?.signal?.removeEventListener('abort', abort); }
 }
 
 export function isProfileReady(profile?: AuthProfile | null) {

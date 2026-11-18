@@ -24,6 +24,7 @@ type AuthContextValue = {
   logIn: (email: string, password: string) => Promise<AuthProfile | null>;
   saveProfile: (profile: ProfileInput, photoDataUrl?: string | null) => Promise<void>;
   logOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -100,6 +101,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setProfile(current.profile);
   };
 
+  const refreshProfile = async () => {
+    if (!token) return;
+    const result = await apiRequest<{ profile: AuthProfile | null }>('/api/me', token);
+    setProfile(result.profile);
+  };
+
   const logOut = async () => {
     try {
       if (token) await apiRequest('/auth/logout', token, { method: 'POST' });
@@ -111,7 +118,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   };
 
   return (
-    <AuthContext.Provider value={{ isRestoring, token, profile, createAccount, logIn, saveProfile, logOut }}>
+    <AuthContext.Provider value={{ isRestoring, token, profile, createAccount, logIn, saveProfile, logOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

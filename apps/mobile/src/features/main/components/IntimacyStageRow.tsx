@@ -35,7 +35,7 @@ export function IntimacyStageRow({
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${label}をタップしてデモで公開する`}
+        accessibilityLabel={`${label}の公開条件を確認`}
         onPress={onUnlock}
         style={({ pressed }) => [styles.row, pressed && styles.pressed]}
       >
