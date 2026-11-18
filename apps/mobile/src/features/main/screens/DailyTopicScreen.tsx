@@ -1,5 +1,5 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import { IntimacyUnlockedCard } from '../components/IntimacyUnlockedCard';
 import { dailyTopicQuestion, dailyTopicTasks } from '../data/dailyTopics';
 
 export default function DailyTopicScreen() {
+  const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
   const [completedTasks, setCompletedTasks] = useState<string[]>(['answer-topic']);
   const [answer, setAnswer] = useState('');
   const allTasksComplete = completedTasks.length === dailyTopicTasks.length;
@@ -87,7 +88,12 @@ export default function DailyTopicScreen() {
 
           {allTasksComplete ? (
             <IntimacyUnlockedCard
-              onViewProfile={() => router.replace('/profile')}
+              onViewProfile={() =>
+                router.replace({
+                  pathname: '/partner-profile/[conversationId]',
+                  params: { conversationId },
+                })
+              }
             />
           ) : null}
         </ScrollView>

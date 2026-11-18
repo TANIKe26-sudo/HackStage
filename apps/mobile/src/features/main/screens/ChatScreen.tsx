@@ -79,9 +79,21 @@ export default function ChatScreen() {
           <View style={styles.avatar}>
             <Text style={styles.avatarLabel}>No image</Text>
           </View>
-          <Text numberOfLines={1} style={styles.name}>
-            {conversation.name}
-          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${conversation.name}さんのプロフィールを表示`}
+            onPress={() =>
+              router.push({
+                pathname: '/partner-profile/[conversationId]',
+                params: { conversationId },
+              })
+            }
+            style={({ pressed }) => [styles.nameButton, pressed && styles.pressed]}
+          >
+            <Text numberOfLines={1} style={styles.name}>
+              {conversation.name}
+            </Text>
+          </Pressable>
           <View style={styles.headerSpacer} />
         </View>
 
@@ -202,10 +214,13 @@ const styles = StyleSheet.create({
     fontSize: 7,
   },
   name: {
-    flex: 1,
     color: colors.text,
     fontSize: 16,
     fontWeight: '700',
+  },
+  nameButton: {
+    flex: 1,
+    justifyContent: 'center',
   },
   headerSpacer: {
     width: 12,
