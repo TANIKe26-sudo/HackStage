@@ -25,7 +25,7 @@ app.use(apiErrorHandler);
 
 const server = app.listen(port, '0.0.0.0', () => {
   console.log(`API listening on http://localhost:${port}`);
-  const missingAdminKeys = ['ADMIN_USERS_KEY', 'ADMIN_VERIFICATION_KEY', 'ADMIN_CONTENT_KEY', 'ADMIN_SAFETY_KEY', 'ADMIN_AUDIT_KEY']
+  const missingAdminKeys = ['ADMIN_USERS_KEY', 'ADMIN_CONTENT_KEY', 'ADMIN_SAFETY_KEY', 'ADMIN_AUDIT_KEY']
     .filter(key => !process.env[key]);
   if (missingAdminKeys.length) console.warn(`Some admin roles are disabled: ${missingAdminKeys.join(', ')}`);
   void dispatchPushQueue();

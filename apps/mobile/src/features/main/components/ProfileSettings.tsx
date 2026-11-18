@@ -9,7 +9,7 @@ import { colors, spacing } from '../../../theme/tokens';
 import { RequestState } from './RequestState';
 
 export type SettingKind = 'visibility' | 'calendar' | 'location' | 'report' | 'data' | 'hidePeople';
-type Plan = { id: string; startsAt: string; placeLabel: string; exactLocation: string | null; status: string; confirmed: { you: boolean; other: boolean }; arrived: { you: string | null; other: string | null } };
+type Plan = { id: string; startsAt: string | null; placeLabel: string | null; revision: number; exactLocation: string | null; status: string; confirmed: { you: boolean; other: boolean }; arrived: { you: string | null; other: string | null } };
 const titles: Record<SettingKind, string> = { visibility: '公開範囲', calendar: '待ち合わせ予定', location: 'マッチング範囲', report: '通報・ブロック', data: 'データ管理・削除', hidePeople: '知り合いを非表示' };
 function Button({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
   return <Pressable accessibilityRole="button" disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={[styles.button, disabled && { opacity: 0.4 }]}><Text style={styles.buttonText}>{label}</Text></Pressable>;
@@ -121,12 +121,12 @@ function SettingsContent({ kind, onClose }: { kind: SettingKind; onClose: () => 
     {kind === 'calendar' && selected ? <>
       <Text style={styles.text}>この予定はマッチ相手との間で共有します。第三者への共有リンクはありません。</Text>
       {plans.map(plan => <View key={plan.id} style={styles.plan}>
-        <Text style={styles.text}>{new Date(plan.startsAt).toLocaleString('ja-JP')} / {plan.placeLabel}</Text>
-        <Text style={styles.text}>{plan.status === 'cancelled' ? 'キャンセル済み' : `自分：${plan.confirmed.you ? '確認済み' : '未確認'} / 相手：${plan.confirmed.other ? '確認済み' : '未確認'}`}</Text>
+        <Text style={styles.text}>{plan.startsAt ? new Date(plan.startsAt).toLocaleString('ja-JP') : '日時非公開'} / {plan.placeLabel ?? '場所非公開'}</Text>
+        <Text style={styles.text}>{plan.status === 'cancelled' ? 'キャンセル済み' : plan.status === 'expired' ? '期限切れ' : `自分：${plan.confirmed.you ? '確認済み' : '未確認'} / 相手：${plan.confirmed.other ? '確認済み' : '未確認'}`}</Text>
         {plan.exactLocation ? <Text style={styles.text}>{plan.exactLocation}</Text> : null}
         <Text style={styles.text}>到着：自分 {plan.arrived.you ? '済み' : '未'} / 相手 {plan.arrived.other ? '済み' : '未'}</Text>
-        {plan.status !== 'cancelled' ? <>
-          <Button label="予定を確認（詳細な場所の共有に同意）" disabled={busy} onPress={() => void run(async () => { await request(`/api/date-plans/${plan.id}/confirm`, 'POST', { consentToLocation: true }); await loadPlans(selected); })} />
+        {!['cancelled', 'expired'].includes(plan.status) ? <>
+          <Button label="予定を確認（詳細な場所の共有に同意）" disabled={busy} onPress={() => void run(async () => { await request(`/api/date-plans/${plan.id}/confirm`, 'POST', { scope: { schedule: true, area: true, arrival: true, exactLocation: true }, revision: plan.revision }); await loadPlans(selected); })} />
           <Button label="到着を報告" disabled={busy || !plan.confirmed.you || !plan.confirmed.other} onPress={() => void run(async () => { await request(`/api/date-plans/${plan.id}/arrive`, 'POST', {}); await loadPlans(selected); })} />
           <Button label="予定をキャンセル" disabled={busy} onPress={() => Alert.alert('予定のキャンセル', 'この予定をキャンセルしますか？', [{ text: '戻る', style: 'cancel' }, { text: 'キャンセルする', onPress: () => void run(async () => { await request(`/api/date-plans/${plan.id}/cancel`, 'POST', {}); await loadPlans(selected); }) }])} />
         </> : null}

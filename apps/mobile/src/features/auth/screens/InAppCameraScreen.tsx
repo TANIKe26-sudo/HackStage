@@ -1,3 +1,4 @@
+import { captureRegions } from '../captureRegions';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router, useFocusEffect } from 'expo-router';
@@ -66,13 +67,15 @@ export default function InAppCameraScreen() {
       if (!picture.uri) throw new Error('撮影画像が取得できませんでした。');
 
       const context = ImageManipulator.manipulate(picture.uri);
-      if (picture.width >= picture.height) context.resize({ width: 1280 });
-      else context.resize({ height: 1280 });
+      if (Math.max(picture.width, picture.height) > 1280) {
+        context.resize(picture.width >= picture.height ? { width: 1280 } : { height: 1280 });
+      }
       const rendered = await context.renderAsync();
       const full = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.85, base64: true });
       if (!full.base64) throw new Error('撮影画像を読み込めませんでした。');
       const crop = ImageManipulator.manipulate(full.uri);
-      crop.crop({ originX: Math.floor(full.width * 0.25), originY: Math.floor(full.height * 0.70), width: Math.max(1, Math.floor(full.width * 0.50)), height: Math.max(1, Math.floor(full.height * 0.20)) });
+      const region = captureRegions[0];
+      crop.crop({ originX: Math.floor(full.width * region.x), originY: Math.floor(full.height * region.y), width: Math.max(1, Math.floor(full.width * region.width)), height: Math.max(1, Math.floor(full.height * region.height)) });
       const preview = await (await crop.renderAsync()).saveAsync({ format: SaveFormat.JPEG, compress: 0.85 });
       setCaptured({ uri: full.uri, dataUrl: `data:image/jpeg;base64,${full.base64}`, preview: preview.uri });
       setIsTakingPicture(false);

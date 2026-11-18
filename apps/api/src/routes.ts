@@ -3,7 +3,7 @@ import { createReadStream, existsSync, mkdirSync, unlinkSync, writeFileSync } fr
 import { resolve } from 'node:path';
 import { Router, type ErrorRequestHandler, type Request, type Response } from 'express';
 import { db } from './db.js';
-import { createSession, hashPassword, rateLimit, requireAdmin, requireAgeApproved, requireAppealAuth, requireAuth, requireNotLimited, sha256, verifyPassword } from './security.js';
+import { createSession, hashPassword, rateLimit, requireAdmin, requireAppealAuth, requireAuth, requireNotLimited, sha256, verifyPassword } from './security.js';
 import { audit } from './audit.js';
 import { notify } from './notifications.js';
 import { contactDigest, decryptLocation, encryptLocation } from './privacy.js';
@@ -17,9 +17,6 @@ mkdirSync(storage, { recursive: true });
 const self = (res: Response) => res.locals.userId as string;
 const bad = (res: Response, status: number, error: string) => { res.status(status).json({ error }); };
 
-function ageStatus(userId: string): string {
-  return (db.prepare('SELECT status FROM age_verifications WHERE user_id=?').get(userId) as { status: string } | undefined)?.status ?? 'unsubmitted';
-}
 
 function profile(userId: string, viewerId = userId): Record<string, unknown> | undefined {
   return db.prepare(`SELECT p.user_id AS id,p.display_name AS displayName,p.age,
@@ -137,13 +134,12 @@ router.post('/auth/signup', rateLimit('signup', 8, 900000), async (req, res, nex
     if (db.prepare('SELECT 1 FROM users WHERE email=?').get(email)) { bad(res, 409, 'このメールアドレスは登録済みです。'); return; }
     const userId = id();
     db.prepare('INSERT INTO users(id,email,password_hash,created_at) VALUES(?,?,?,?)').run(userId, email, await hashPassword(password), now());
-    db.prepare('INSERT INTO age_verifications(user_id) VALUES(?)').run(userId);
     db.prepare('INSERT INTO matching_preferences(user_id,updated_at) VALUES(?,?)').run(userId, now());
     if (process.env.CONTACT_HASH_KEY) {
       db.prepare('INSERT INTO user_contact_identifiers(user_id,kind,contact_digest,created_at) VALUES(?,?,?,?)')
         .run(userId, 'email', contactDigest('email', email), now());
     }
-    res.status(201).json({ user: { id: userId, email, status: 'active', ageVerification: 'unsubmitted' }, token: createSession(userId, input(req.body?.deviceName, 80)), tokenType: 'Bearer' });
+    res.status(201).json({ user: { id: userId, email, status: 'active' }, token: createSession(userId, input(req.body?.deviceName, 80)), tokenType: 'Bearer' });
   } catch (error) { next(error); }
 });
 
@@ -162,7 +158,7 @@ router.post('/auth/login', rateLimit('login', 10, 900000), async (req, res, next
     db.prepare('INSERT INTO auth_attempts(id,email_digest,ip_digest,successful,attempted_at) VALUES(?,?,?,?,?)')
       .run(id(), emailDigest, ipDigest, valid ? 1 : 0, now());
     if (!valid || !user) { bad(res, 401, 'メールアドレスまたはパスワードが正しくありません。'); return; }
-    res.json({ user: { id: user.id, email: user.email, status: user.status, ageVerification: ageStatus(user.id) }, token: createSession(user.id, input(req.body?.deviceName, 80)), tokenType: 'Bearer' });
+    res.json({ user: { id: user.id, email: user.email, status: user.status }, token: createSession(user.id, input(req.body?.deviceName, 80)), tokenType: 'Bearer' });
   } catch (error) { next(error); }
 });
 
@@ -177,7 +173,7 @@ router.get('/auth/me', requireAuth, (req, res) => {
   const user = db.prepare('SELECT id,email,status,created_at AS createdAt FROM users WHERE id=?').get(userId);
   const restrictions = db.prepare(`SELECT id,scope,reason,expires_at AS expiresAt FROM user_limits
     WHERE user_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?)`).all(userId, now());
-  res.json({ user, ageVerification: ageStatus(userId), profile: profile(userId, userId) ?? null, restrictions });
+  res.json({ user, profile: profile(userId, userId) ?? null, restrictions });
 });
 
 router.get('/auth/sessions', requireAuth, (req, res) => {
@@ -300,12 +296,6 @@ router.patch('/notifications/read-all', requireAuth, (req, res) => {
   res.status(204).end();
 });
 
-router.post('/auth/age-verification', requireAuth, rateLimit('age-verify', 5, 3600000), (req, res) => {
-  if (req.body?.adultConfirmed !== true) { bad(res, 400, '18歳以上であることの確認が必要です。'); return; }
-  db.prepare(`UPDATE age_verifications SET status='pending',adult_confirmed_at=?,reviewed_at=NULL,reviewed_by=NULL WHERE user_id=?`).run(now(), self(res));
-  audit(self(res), 'user', 'age_verification.submitted', 'user', self(res));
-  res.json({ status: 'pending' });
-});
 
 const goalOptions = ['serious', 'casual', 'friendship', 'undecided'];
 const paceOptions = ['slow', 'balanced', 'frequent'];
@@ -360,7 +350,7 @@ router.post('/profiles', requireAuth, (req, res) => {
   res.status(201).json({ profile: profile(userId, userId) });
 });
 
-router.get('/profiles/:id', requireAuth, requireAgeApproved, (req, res) => {
+router.get('/profiles/:id', requireAuth, (req, res) => {
   const viewer = self(res);
   const target = String(req.params.id);
   const result = profile(target, viewer);
@@ -369,7 +359,7 @@ router.get('/profiles/:id', requireAuth, requireAgeApproved, (req, res) => {
   res.json({ profile: result, visibleStage: viewer === target ? 4 : match ? grantedStage(match.id, target, viewer) : null });
 });
 
-router.get('/matches/:id/stage-consent', requireAuth, requireAgeApproved, (req, res) => {
+router.get('/matches/:id/stage-consent', requireAuth, (req, res) => {
   const user = self(res);
   const matchId = String(req.params.id);
   if (!matchMember(matchId, user)) { bad(res, 404, 'マッチが見つかりません。'); return; }
@@ -381,7 +371,7 @@ router.get('/matches/:id/stage-consent', requireAuth, requireAgeApproved, (req, 
   res.json({ myGrant: myGrant ?? null, theirGrant: theirGrant ?? null, relationshipStage: visibleStage(matchId) });
 });
 
-router.put('/matches/:id/stage-consent', requireAuth, requireAgeApproved, (req, res) => {
+router.put('/matches/:id/stage-consent', requireAuth, (req, res) => {
   const owner = self(res);
   const matchId = String(req.params.id);
   const stage = Number(req.body?.stage);
@@ -401,7 +391,7 @@ router.put('/matches/:id/stage-consent', requireAuth, requireAgeApproved, (req, 
   res.json({ grantedStage: stage, expiresAt: expiresAt.toISOString() });
 });
 
-router.delete('/matches/:id/stage-consent', requireAuth, requireAgeApproved, (req, res) => {
+router.delete('/matches/:id/stage-consent', requireAuth, (req, res) => {
   const owner = self(res);
   const matchId = String(req.params.id);
   if (!matchMember(matchId, owner)) { bad(res, 404, 'マッチが見つかりません。'); return; }
@@ -413,7 +403,7 @@ router.delete('/matches/:id/stage-consent', requireAuth, requireAgeApproved, (re
   res.status(204).end();
 });
 
-router.post('/captures', requireAuth, requireAgeApproved, requireNotLimited('posting'), rateLimit('capture', 12, 3600000), (req, res, next) => {
+router.post('/captures', requireAuth, requireNotLimited('posting'), rateLimit('capture', 12, 3600000), (req, res, next) => {
   try {
     const owner = self(res);
     const source = req.body?.captureSource;
@@ -438,7 +428,7 @@ router.post('/captures', requireAuth, requireAgeApproved, requireNotLimited('pos
   } catch (error) { next(error); }
 });
 
-router.get('/captures/:id/image', requireAuth, requireAgeApproved, (req, res, next) => {
+router.get('/captures/:id/image', requireAuth, (req, res, next) => {
   const viewer = self(res);
   const capture = db.prepare(`SELECT id,owner_id AS ownerId,stage,storage_key AS storageKey,media_type AS mediaType FROM captures WHERE id=?`)
     .get(String(req.params.id)) as { id: string; ownerId: string; stage: number; storageKey: string; mediaType: string } | undefined;
@@ -456,7 +446,7 @@ router.get('/captures/:id/image', requireAuth, requireAgeApproved, (req, res, ne
   createReadStream(resolve(storage, capture.storageKey)).on('error', next).pipe(res);
 });
 
-router.get('/captures/:id/access-history', requireAuth, requireAgeApproved, (req, res) => {
+router.get('/captures/:id/access-history', requireAuth, (req, res) => {
   const captureId = String(req.params.id);
   if (!db.prepare('SELECT 1 FROM captures WHERE id=? AND owner_id=?').get(captureId, self(res))) { bad(res, 404, '画像が見つかりません。'); return; }
   const history = db.prepare(`SELECT viewer_id AS viewerId,accessed_at AS accessedAt FROM image_access_logs
@@ -464,7 +454,7 @@ router.get('/captures/:id/access-history', requireAuth, requireAgeApproved, (req
   res.json({ history });
 });
 
-router.get('/discover', requireAuth, requireAgeApproved, requireNotLimited('discovery'), (req, res) => {
+router.get('/discover', requireAuth, requireNotLimited('discovery'), (req, res) => {
   const viewer = self(res);
   const preferences = db.prepare(`SELECT relationship_goal AS goal,conversation_pace AS pace,
       preferred_classification AS classification,accepted_goals AS goals,accepted_paces AS paces
@@ -483,7 +473,6 @@ router.get('/discover', requireAuth, requireAgeApproved, requireNotLimited('disc
       COALESCE(i.impressions,0) AS impressions,i.last_shown_at AS lastShown,
       COALESCE((SELECT SUM(global_i.impressions) FROM discovery_impressions global_i WHERE global_i.candidate_id=p.user_id),0) AS totalExposure
     FROM profiles p JOIN users u ON u.id=p.user_id
-    JOIN age_verifications v ON v.user_id=p.user_id AND v.status='approved'
     LEFT JOIN matching_preferences mp ON mp.user_id=p.user_id
     LEFT JOIN discovery_impressions i ON i.viewer_id=? AND i.candidate_id=p.user_id
     WHERE p.user_id<>? AND u.status='active' AND p.throat_classification IN ('present','absent')
@@ -521,10 +510,10 @@ router.get('/discover', requireAuth, requireAgeApproved, requireNotLimited('disc
   res.json({ profiles: selected.map(row => profile(row.id, viewer)).filter(Boolean), candidateCount: eligible.length, notice, paidPriority: false });
 });
 
-router.post('/likes', requireAuth, requireAgeApproved, requireNotLimited('discovery'), rateLimit('likes', 80, 3600000), (req, res) => {
+router.post('/likes', requireAuth, requireNotLimited('discovery'), rateLimit('likes', 80, 3600000), (req, res) => {
   const from = self(res);
   const to = input(req.body?.toUserId, 64);
-  if (!to || from === to || !profile(to) || ageStatus(to) !== 'approved' || blocked(from, to)) { bad(res, 404, '対象ユーザーが見つからないか、いいねできません。'); return; }
+  if (!to || from === to || !profile(to) || blocked(from, to)) { bad(res, 404, '対象ユーザーが見つからないか、いいねできません。'); return; }
   const inserted = db.prepare('INSERT OR IGNORE INTO likes(from_user_id,to_user_id,created_at) VALUES(?,?,?)').run(from, to, now());
   const reciprocal = db.prepare('SELECT 1 FROM likes WHERE from_user_id=? AND to_user_id=?').get(to, from);
   if (!reciprocal) {
@@ -542,7 +531,7 @@ router.post('/likes', requireAuth, requireAgeApproved, requireNotLimited('discov
   res.status(201).json({ matched: true, matchId });
 });
 
-router.get('/likes/received', requireAuth, requireAgeApproved, (req, res) => {
+router.get('/likes/received', requireAuth, (req, res) => {
   const user = self(res);
   const rows = db.prepare(`SELECT l.from_user_id AS userId,l.created_at AS createdAt FROM likes l
     WHERE l.to_user_id=? AND NOT EXISTS(SELECT 1 FROM likes x WHERE x.from_user_id=? AND x.to_user_id=l.from_user_id)
@@ -550,7 +539,7 @@ router.get('/likes/received', requireAuth, requireAgeApproved, (req, res) => {
   res.json({ likes: rows.map(row => ({ ...row, profile: profile(row.userId, user) })) });
 });
 
-router.get('/matches', requireAuth, requireAgeApproved, (req, res) => {
+router.get('/matches', requireAuth, (req, res) => {
   const user = self(res);
   const rows = db.prepare('SELECT id,user_a AS a,user_b AS b,created_at AS createdAt FROM matches WHERE user_a=? OR user_b=? ORDER BY created_at DESC').all(user, user) as
     { id: string; a: string; b: string; createdAt: string }[];
@@ -560,7 +549,7 @@ router.get('/matches', requireAuth, requireAgeApproved, (req, res) => {
   }) });
 });
 
-router.get('/matches/:id/date-plans', requireAuth, requireAgeApproved, (req, res) => {
+router.get('/matches/:id/date-plans', requireAuth, (req, res) => {
   expirePrivacyShares();
   const user = self(res);
   const matchId = String(req.params.id);
@@ -592,7 +581,7 @@ function validDateExpiry(value: unknown, scheduledAt: Date): Date | null {
   return expiry;
 }
 
-router.post('/matches/:id/date-plans', requireAuth, requireAgeApproved, (req, res) => {
+router.post('/matches/:id/date-plans', requireAuth, (req, res) => {
   const creator = self(res);
   const matchId = String(req.params.id);
   const other = otherMember(matchId, creator);
@@ -625,7 +614,7 @@ router.post('/matches/:id/date-plans', requireAuth, requireAgeApproved, (req, re
   res.status(201).json({ id: planId, status: 'proposed', scheduledAt: scheduledAt.toISOString(), area, expiresAt: expiry.toISOString() });
 });
 
-router.patch('/matches/:id/date-plans/:planId/consent', requireAuth, requireAgeApproved, (req, res) => {
+router.patch('/matches/:id/date-plans/:planId/consent', requireAuth, (req, res) => {
   const user = self(res);
   const matchId = String(req.params.id);
   const planId = String(req.params.planId);
@@ -654,7 +643,7 @@ router.patch('/matches/:id/date-plans/:planId/consent', requireAuth, requireAgeA
   res.json({ status: mutuallyConfirmed ? 'confirmed' : 'proposed', expiresAt: expiry.toISOString() });
 });
 
-router.post('/matches/:id/date-plans/:planId/reschedule', requireAuth, requireAgeApproved, (req, res) => {
+router.post('/matches/:id/date-plans/:planId/reschedule', requireAuth, (req, res) => {
   const user = self(res);
   const matchId = String(req.params.id);
   const planId = String(req.params.planId);
@@ -688,7 +677,7 @@ router.post('/matches/:id/date-plans/:planId/reschedule', requireAuth, requireAg
   res.json({ id: planId, status: 'proposed', scheduledAt: scheduledAt.toISOString() });
 });
 
-router.post('/matches/:id/date-plans/:planId/cancel', requireAuth, requireAgeApproved, (req, res) => {
+router.post('/matches/:id/date-plans/:planId/cancel', requireAuth, (req, res) => {
   const user = self(res);
   const matchId = String(req.params.id);
   const planId = String(req.params.planId);
@@ -702,7 +691,7 @@ router.post('/matches/:id/date-plans/:planId/cancel', requireAuth, requireAgeApp
   res.status(204).end();
 });
 
-router.post('/matches/:id/date-plans/:planId/arrival', requireAuth, requireAgeApproved, (req, res) => {
+router.post('/matches/:id/date-plans/:planId/arrival', requireAuth, (req, res) => {
   const user = self(res);
   const matchId = String(req.params.id);
   const planId = String(req.params.planId);
@@ -728,7 +717,7 @@ router.post('/matches/:id/date-plans/:planId/arrival', requireAuth, requireAgeAp
   res.json({ arrivedAt: arrivalAt });
 });
 
-router.get('/matches/:id/messages', requireAuth, requireAgeApproved, (req, res) => {
+router.get('/matches/:id/messages', requireAuth, (req, res) => {
   const user = self(res);
   const matchId = String(req.params.id);
   const other = otherMember(matchId, user);
@@ -743,7 +732,7 @@ router.get('/matches/:id/messages', requireAuth, requireAgeApproved, (req, res) 
   res.json({ messages: rows.reverse(), visibleStage: grantedStage(matchId, other, user), myGrantedStage: grantedStage(matchId, user, other), relationshipStage: visibleStage(matchId) });
 });
 
-router.delete('/matches/:id/messages', requireAuth, requireAgeApproved, (req, res) => {
+router.delete('/matches/:id/messages', requireAuth, (req, res) => {
   const user = self(res);
   const matchId = String(req.params.id);
   if (!matchMember(matchId, user)) { bad(res, 404, 'マッチが見つかりません。'); return; }
@@ -754,7 +743,7 @@ router.delete('/matches/:id/messages', requireAuth, requireAgeApproved, (req, re
   res.status(204).end();
 });
 
-router.post('/matches/:id/messages', requireAuth, requireAgeApproved, requireNotLimited('messaging'), rateLimit('messages', 30, 60000), (req, res) => {
+router.post('/matches/:id/messages', requireAuth, requireNotLimited('messaging'), rateLimit('messages', 30, 60000), (req, res) => {
   const sender = self(res);
   const matchId = String(req.params.id);
   const body = input(req.body?.body, 2000);
@@ -784,7 +773,7 @@ router.post('/matches/:id/messages', requireAuth, requireAgeApproved, requireNot
   res.status(201).json({ message, visibleStage: grantedStage(matchId, recipient, sender), myGrantedStage: grantedStage(matchId, sender, recipient), relationshipStage: visibleStage(matchId), safetyWarning });
 });
 
-router.get('/daily', requireAuth, requireAgeApproved, (req, res) => {
+router.get('/daily', requireAuth, (req, res) => {
   const user = self(res);
   const topic = db.prepare(`SELECT id,topic_date AS date,title,prompt FROM daily_topics WHERE active=1 AND topic_date<=?
     ORDER BY topic_date DESC LIMIT 1`).get(now().slice(0, 10)) as { id: string; date: string; title: string; prompt: string } | undefined;
@@ -793,13 +782,13 @@ router.get('/daily', requireAuth, requireAgeApproved, (req, res) => {
   res.json({ daily: { ...topic, answer: answer ?? null, completed: Boolean(answer) } });
 });
 
-router.get('/daily/answers', requireAuth, requireAgeApproved, (req, res) => {
+router.get('/daily/answers', requireAuth, (req, res) => {
   const rows = db.prepare(`SELECT a.id,a.answer,a.created_at AS createdAt,d.id AS topicId,d.title,d.topic_date AS date
     FROM daily_answers a JOIN daily_topics d ON d.id=a.topic_id WHERE a.user_id=? ORDER BY d.topic_date DESC LIMIT 100`).all(self(res));
   res.json({ answers: rows });
 });
 
-router.post('/daily/answers', requireAuth, requireAgeApproved, requireNotLimited('posting'), rateLimit('daily-answers', 10, 3600000), (req, res) => {
+router.post('/daily/answers', requireAuth, requireNotLimited('posting'), rateLimit('daily-answers', 10, 3600000), (req, res) => {
   const topicId = input(req.body?.topicId, 64);
   const answer = input(req.body?.answer, 2000);
   if (!answer || !db.prepare('SELECT 1 FROM daily_topics WHERE id=? AND active=1 AND topic_date<=?').get(topicId, now().slice(0, 10))) {
@@ -812,7 +801,7 @@ router.post('/daily/answers', requireAuth, requireAgeApproved, requireNotLimited
   } catch { bad(res, 409, 'この課題には回答済みです。'); }
 });
 
-router.post('/users/:id/block', requireAuth, requireAgeApproved, (req, res) => {
+router.post('/users/:id/block', requireAuth, (req, res) => {
   const blocker = self(res);
   const blockedId = String(req.params.id);
   if (blocker === blockedId || !db.prepare('SELECT 1 FROM users WHERE id=?').get(blockedId)) { bad(res, 404, 'ユーザーが見つかりません。'); return; }
@@ -821,12 +810,12 @@ router.post('/users/:id/block', requireAuth, requireAgeApproved, (req, res) => {
   res.status(204).end();
 });
 
-router.delete('/users/:id/block', requireAuth, requireAgeApproved, (req, res) => {
+router.delete('/users/:id/block', requireAuth, (req, res) => {
   db.prepare('DELETE FROM blocks WHERE blocker_id=? AND blocked_id=?').run(self(res), String(req.params.id));
   res.status(204).end();
 });
 
-router.post('/users/:id/reports', requireAuth, requireAgeApproved, rateLimit('reports', 20, 86400000), (req, res) => {
+router.post('/users/:id/reports', requireAuth, rateLimit('reports', 20, 86400000), (req, res) => {
   const reporter = self(res);
   const target = String(req.params.id);
   const reason = input(req.body?.reason, 80);
@@ -840,9 +829,9 @@ router.post('/users/:id/reports', requireAuth, requireAgeApproved, rateLimit('re
 
 router.get('/admin/users', requireAdmin('users'), (req, res) => {
   const q = `%${input(req.query.q, 80)}%`;
-  const users = db.prepare(`SELECT u.id,u.email,u.status,u.created_at AS createdAt,v.status AS ageVerification,
+  const users = db.prepare(`SELECT u.id,u.email,u.status,u.created_at AS createdAt,
       p.display_name AS displayName,p.throat_classification AS throatClassification
-    FROM users u JOIN age_verifications v ON v.user_id=u.id LEFT JOIN profiles p ON p.user_id=u.id
+    FROM users u LEFT JOIN profiles p ON p.user_id=u.id
     WHERE u.email LIKE ? OR p.display_name LIKE ? ORDER BY u.created_at DESC LIMIT 100`).all(q, q);
   res.json({ users });
 });
@@ -870,32 +859,16 @@ router.patch('/admin/users/:id/status', requireAdmin('users'), (req, res) => {
   res.json({ userId: target, status });
 });
 
-router.get('/admin/verifications', requireAdmin('verification'), (req, res) => {
-  const rows = db.prepare(`SELECT u.id AS userId,u.email,v.status,v.adult_confirmed_at AS adultConfirmedAt
-    FROM age_verifications v JOIN users u ON u.id=v.user_id WHERE v.status='pending' ORDER BY v.adult_confirmed_at`).all();
-  res.json({ verifications: rows });
-});
-
-router.patch('/admin/users/:id/verification', requireAdmin('verification'), (req, res) => {
-  const status = req.body?.status;
-  const target = String(req.params.id);
-  if (!['approved', 'rejected'].includes(status) || !db.prepare('SELECT 1 FROM users WHERE id=?').get(target)) { bad(res, 400, '対象ユーザーまたは確認結果が不正です。'); return; }
-  db.prepare('UPDATE age_verifications SET status=?,reviewed_at=?,reviewed_by=? WHERE user_id=?').run(status, now(), 'admin', target);
-  audit(null, 'verification_admin', 'age_verification.reviewed', 'user', target, { status });
-  notify(target, 'age_verification', '年齢確認の状態が更新されました', status === 'approved' ? '年齢確認が承認されました。' : '年齢確認が承認されませんでした。');
-  res.json({ userId: target, status });
-});
-
-router.patch('/admin/users/:id/classification', requireAdmin('verification'), (req, res) => {
+router.patch('/admin/users/:id/classification', requireAdmin('users'), (req, res) => {
   const classification = req.body?.throatClassification;
   if (!['present', 'absent', 'pending'].includes(classification)) { bad(res, 400, '分類はpresent、absent、pendingです。'); return; }
   const result = db.prepare('UPDATE profiles SET throat_classification=?,updated_at=? WHERE user_id=?').run(classification, now(), String(req.params.id));
   if (!Number(result.changes)) { bad(res, 404, 'プロフィールが見つかりません。'); return; }
-  audit(null, 'verification_admin', 'profile.classified', 'user', String(req.params.id), { classification });
+  audit(null, 'users_admin', 'profile.classified', 'user', String(req.params.id), { classification });
   res.json({ throatClassification: classification });
 });
 
-router.put('/admin/users/:id/contact-identifiers', requireAdmin('verification'), (req, res) => {
+router.put('/admin/users/:id/contact-identifiers', requireAdmin('users'), (req, res) => {
   const userId = String(req.params.id);
   const kind = req.body?.type;
   const value = input(req.body?.value, 254);
@@ -909,18 +882,18 @@ router.put('/admin/users/:id/contact-identifiers', requireAdmin('verification'),
   db.prepare(`INSERT INTO user_contact_identifiers(user_id,kind,contact_digest,verified_at,created_at) VALUES(?,?,?,?,?)
     ON CONFLICT(user_id,kind,contact_digest) DO UPDATE SET verified_at=excluded.verified_at`)
     .run(userId, kind, digest, now(), now());
-  audit(null, 'verification_admin', 'contact_identifier.verified', 'user', userId, { type: kind, digest });
+  audit(null, 'users_admin', 'contact_identifier.verified', 'user', userId, { type: kind, digest });
   res.status(201).json({ userId, type: kind, storedAsDigest: true });
 });
 
-router.delete('/admin/users/:id/contact-identifiers', requireAdmin('verification'), (req, res) => {
+router.delete('/admin/users/:id/contact-identifiers', requireAdmin('users'), (req, res) => {
   const userId = String(req.params.id);
   const kind = req.body?.type;
   const value = input(req.body?.value, 254);
   if (!process.env.CONTACT_HASH_KEY || !['email', 'phone'].includes(kind) || !value) { bad(res, 400, '連絡先の種類と値を指定してください。'); return; }
   const digest = contactDigest(kind, value);
   db.prepare('DELETE FROM user_contact_identifiers WHERE user_id=? AND kind=? AND contact_digest=?').run(userId, kind, digest);
-  audit(null, 'verification_admin', 'contact_identifier.deleted', 'user', userId, { type: kind, digest });
+  audit(null, 'users_admin', 'contact_identifier.deleted', 'user', userId, { type: kind, digest });
   res.status(204).end();
 });
 
@@ -937,7 +910,7 @@ router.post('/admin/daily', requireAdmin('content'), (req, res) => {
   try {
     db.prepare('INSERT INTO daily_topics(id,topic_date,title,prompt,created_at,created_by) VALUES(?,?,?,?,?,?)').run(topicId, date, title, prompt, now(), 'admin');
     audit(null, 'content_admin', 'daily.created', 'daily_topic', topicId, { date });
-    const eligible = db.prepare(`SELECT user_id AS id FROM age_verifications WHERE status='approved'`).all() as { id: string }[];
+    const eligible = db.prepare(`SELECT id FROM users WHERE status='active'`).all() as { id: string }[];
     for (const user of eligible) notify(user.id, 'daily', '今日のデイリー課題', '新しい話題が追加されました。', { topicId });
     res.status(201).json({ id: topicId, date, title, prompt, active: true });
   } catch { bad(res, 409, 'この日付の課題は登録済みです。'); }
@@ -1106,7 +1079,6 @@ router.get('/admin/audit', requireAdmin('audit'), (req, res) => {
 router.get('/admin/operations/summary', requireAdmin('audit'), (req, res) => {
   const count = (sql: string) => Number((db.prepare(sql).get() as { count: number }).count);
   res.json({
-    pendingAgeVerifications: count("SELECT COUNT(*) AS count FROM age_verifications WHERE status='pending'"),
     openReports: count("SELECT COUNT(*) AS count FROM reports WHERE status IN ('open','reviewing')"),
     openSafetyFlags: count("SELECT COUNT(*) AS count FROM safety_flags WHERE status IN ('open','reviewing')"),
     pendingAppeals: count("SELECT COUNT(*) AS count FROM appeals WHERE status='pending'"),

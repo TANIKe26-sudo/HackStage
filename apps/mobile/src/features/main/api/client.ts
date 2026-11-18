@@ -5,7 +5,7 @@ import { useAuth } from '../../auth/context/AuthContext';
 export type PublicProfile = {
   user_id: string; display_name: string; birth_year: number | null;
   area: string | null; bio: string; purpose: string | null;
-  conversation_pace: string | null; throat_class: string; capture_id?: string | null;
+  conversation_pace: string | null; throat_class: string; capture_id?: string | null; initial_capture_id?: string | null;
 };
 export type ProfileCard = {
   id: string; name: string; captureId?: string | null; age: number | null; area: string; goal: string; classification: string;
@@ -30,7 +30,7 @@ export type Daily = {
 export type MatchDaily = Daily & { tasks: Record<string, boolean>; otherAnswered: boolean; progress: Progress };
 export const timeLabel = (value: string) => new Date(value).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
 export function profileCard(p: PublicProfile): ProfileCard {
-  return { id: p.user_id, captureId: p.capture_id, name: p.display_name, age: p.birth_year ? new Date().getFullYear() - p.birth_year : null,
+  return { id: p.user_id, captureId: p.capture_id ?? p.initial_capture_id, name: p.display_name, age: p.birth_year ? new Date().getFullYear() - p.birth_year : null,
     area: p.area || '地域非公開', goal: p.purpose || '目的未登録',
     classification: p.throat_class === 'present' ? '喉仏あり' : p.throat_class === 'absent' ? '喉仏なし' : '分類未登録' };
 }
@@ -40,8 +40,8 @@ export function useMainApi() {
     const get = <T extends object>(path: string, signal?: AbortSignal) => apiRequest<T>(path, token ?? undefined, { signal });
     const post = <T extends object>(path: string, body: object) => apiRequest<T>(path, token ?? undefined, { method: 'POST', body: JSON.stringify(body) });
     return {
-      discover: (signal?: AbortSignal) => get<{ candidates: PublicProfile[]; notice: string | null }>('/api/discover', signal),
-      likes: (signal?: AbortSignal) => get<{ likes: PublicProfile[] }>('/api/likes/received', signal),
+      discover: (signal?: AbortSignal) => get<{ candidates: PublicProfile[]; notice: string | null }>('/api/discover?reuseUnswiped=true', signal),
+      likes: (signal?: AbortSignal) => get<{ likes: PublicProfile[] }>('/api/likes/received?pendingOnly=true', signal),
       like: (toUserId: string) => post<{ matched: boolean; matchId?: string }>('/api/likes', { toUserId }),
       pass: (toUserId: string) => post('/api/passes', { toUserId }),
       matches: (signal?: AbortSignal) => get<{ matches: MatchRow[] }>('/api/matches', signal),

@@ -1,3 +1,4 @@
+import { captureRegions } from '../captureRegions';
 import * as SecureStore from 'expo-secure-store';
 import { createContext, useContext, useEffect, useState, type PropsWithChildren } from 'react';
 import { Platform } from 'react-native';
@@ -93,7 +94,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (photoDataUrl) {
       await apiRequest('/api/captures', token, {
         method: 'POST',
-        body: JSON.stringify({ dataUrl: photoDataUrl, stage: 0 }),
+        body: JSON.stringify({ dataUrl: photoDataUrl, regions: captureRegions }),
       });
     }
 

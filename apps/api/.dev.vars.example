@@ -7,3 +7,9 @@ ADMIN_SAFETY_KEY=replace-me
 ADMIN_USERS_KEY=replace-me
 ADMIN_CONTENT_KEY=replace-me
 ADMIN_AUDIT_KEY=replace-me
+MAIL_MODE=local
+# Production: leave MAIL_MODE unset, then configure these secrets to send mail.
+RESEND_API_KEY=
+MAIL_FROM=
+# Optional webhook for failures in scheduled background processing.
+OPERATIONS_WEBHOOK_URL=

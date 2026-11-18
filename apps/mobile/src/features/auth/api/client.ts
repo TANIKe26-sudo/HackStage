@@ -8,6 +8,7 @@ export type AuthProfile = {
   purpose: string | null;
   conversation_pace: string | null;
   throat_class: 'present' | 'absent' | 'pending';
+  email_verified?: number;
   user_id: string;
   location_scope: 'hidden' | 'area' | 'meetup';
   profile_photo_capture_id?: string | null;
@@ -20,6 +21,12 @@ export class ApiError extends Error {
 }
 
 const errorMessages: Record<string, string> = {
+  feature_restricted: 'この機能は一時的に利用が制限されています。',
+  resize_capture_before_upload: '画像サイズが大きすぎます。撮影し直してください。',
+  topic_not_today: 'このお題の受付は終了しています。再読み込みしてください。',
+  plan_inactive: 'この予定はキャンセル済み、または受付が終了しています。',
+  plan_changed: '予定が更新されています。開き直してください。',
+  maintenance: '現在メンテナンス中です。しばらくしてからお試しください。',
   request_too_large: '送信する画像が大きすぎます。アプリ内カメラで撮り直してください。',
   invalid_preferences: '年齢の範囲を18〜120歳で指定してください。',
   reauthentication_failed: '確認用パスワードが正しくありません。',
