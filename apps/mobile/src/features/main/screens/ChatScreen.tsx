@@ -11,7 +11,6 @@ import {
   TextInput,
   View,
   type ScrollViewInstance,
-  type TextInputInstance,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -26,7 +25,6 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>(() => demoChats[conversationId] ?? []);
   const [draft, setDraft] = useState('');
   const messageList = useRef<ScrollViewInstance | null>(null);
-  const messageInput = useRef<TextInputInstance | null>(null);
 
   useEffect(() => {
     messageList.current?.scrollToEnd({ animated: true });
@@ -87,7 +85,14 @@ export default function ChatScreen() {
           <View style={styles.headerSpacer} />
         </View>
 
-        <TodayTopicCard onAnswer={() => messageInput.current?.focus()} />
+        <TodayTopicCard
+          onAnswer={() =>
+            router.push({
+              pathname: '/daily-topic/[conversationId]',
+              params: { conversationId },
+            })
+          }
+        />
 
         <ScrollView
           ref={messageList}
@@ -131,7 +136,6 @@ export default function ChatScreen() {
 
         <View style={styles.composer}>
           <TextInput
-            ref={messageInput}
             accessibilityLabel="メッセージを入力"
             multiline
             value={draft}

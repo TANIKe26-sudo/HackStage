@@ -16,6 +16,16 @@ export default function MainLayout() {
           contentStyle: { backgroundColor: colors.surface },
         }}
       />
+      <Stack.Screen
+        name="daily-topic/[conversationId]"
+        options={{
+          animation: Platform.OS === 'ios' ? 'default' : 'slide_from_right',
+          animationMatchesGesture: true,
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          contentStyle: { backgroundColor: colors.surface },
+        }}
+      />
     </Stack>
   );
 }
