@@ -10,16 +10,16 @@ export function TodayTopicCard({ onAnswer, topic, available }: { onAnswer: () =>
         <Text style={styles.heading}>今日のお題</Text>
         <Text style={styles.topic}>{topic}</Text>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="今日のお題に回答する"
-        disabled={!available}
-        accessibilityState={{ disabled: !available }}
-        onPress={onAnswer}
-        style={({ pressed }) => [styles.answerButton, pressed && styles.pressed]}
-      >
-        <Text style={styles.answerButtonLabel}>回答</Text>
-      </Pressable>
+      {available ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="今日のお題に回答する"
+          onPress={onAnswer}
+          style={({ pressed }) => [styles.answerButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.answerButtonLabel}>回答</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

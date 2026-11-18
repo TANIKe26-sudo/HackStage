@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Animated, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -105,10 +105,13 @@ export default function DiscoverScreen() {
       <View style={styles.screen}>
         <View style={styles.header}>
           <Text style={styles.brand}>のどじまん</Text>
+          <View style={styles.loadingSlot}>
+            {resource.loading ? <ActivityIndicator size="small" color={colors.mutedText} accessibilityLabel="更新中" /> : null}
+          </View>
         </View>
 
         <View style={styles.main}>
-          <RequestState loading={resource.loading && !resource.data} error={resource.error} onRetry={() => void resource.refresh()} />
+          <RequestState loading={false} error={resource.error} onRetry={() => void resource.refresh()} />
           {profile ? (
             <>
               <View style={styles.cardSlot}>
@@ -161,9 +164,16 @@ const styles = StyleSheet.create({
   },
   header: {
     height: 54,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
+  },
+  loadingSlot: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   brand: {
     color: colors.primary,

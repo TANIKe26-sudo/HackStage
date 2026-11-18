@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAuth } from '../../auth/context/AuthContext';
 import { colors, spacing } from '../../../theme/tokens';
 import { TodayTopicCard } from '../components/TodayTopicCard';
 import { useMainApi, timeLabel, type Message } from '../api/client';
@@ -28,6 +29,7 @@ export default function ChatScreen() {
 }
 
 function ConnectedChat({ conversationId }: { conversationId: string }) {
+  const { profile } = useAuth();
   const api = useMainApi();
   const load = useCallback(async (signal: AbortSignal) => {
     const [match, page, daily] = await Promise.all([api.match(conversationId, signal), api.messages(conversationId, signal), api.daily(signal)]);
@@ -173,6 +175,11 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
                   </Text>
                   {message.warning ? <Text style={styles.messageTime}>{message.warning}</Text> : null}
                 </View>
+                {isMine ? (
+                  <View style={styles.messageAvatar}>
+                    <ProtectedPhoto captureId={profile?.profile_photo_capture_id} />
+                  </View>
+                ) : null}
               </View>
               </View>
             );
@@ -263,7 +270,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   messageContent: {
-    gap: spacing.md,
+    gap: 12,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
     paddingBottom: spacing.lg,

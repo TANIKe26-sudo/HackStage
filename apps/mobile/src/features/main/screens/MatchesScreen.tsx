@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { router } from 'expo-router';
-import { RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '../../../theme/tokens';
@@ -15,6 +15,7 @@ export default function MatchesScreen() {
   const api = useMainApi();
   const resource = useResource(api.matches, 5000);
   const [searchText, setSearchText] = useState('');
+  const [pullRefreshing, setPullRefreshing] = useState(false);
   const conversations = useMemo(() => {
     const rows = (resource.data?.matches ?? []).map(m => ({
       id: m.id, captureId: m.capture_id, name: m.display_name, lastMessage: m.last_message ?? 'マッチしました。会話を始めましょう。',
@@ -29,6 +30,13 @@ export default function MatchesScreen() {
     );
   }, [searchText, resource.data]);
 
+  const refreshByPull = async () => {
+    if (pullRefreshing) return;
+    setPullRefreshing(true);
+    try { await resource.refresh(); }
+    finally { setPullRefreshing(false); }
+  };
+
   const handleTabPress = (tab: MainTabId) => {
     if (tab === 'search') router.replace('/discover');
     if (tab === 'likes') router.replace('/likes');
@@ -40,6 +48,9 @@ export default function MatchesScreen() {
       <View style={styles.screen}>
         <View style={styles.header}>
           <Text style={styles.title}>トーク</Text>
+          <View style={styles.loadingSlot}>
+            {resource.loading && !pullRefreshing ? <ActivityIndicator size="small" color={colors.mutedText} accessibilityLabel="更新中" /> : null}
+          </View>
         </View>
 
         <View style={styles.main}>
@@ -57,13 +68,13 @@ export default function MatchesScreen() {
           </View>
 
           <ScrollView
-            refreshControl={<RefreshControl refreshing={resource.loading} onRefresh={() => void resource.refresh()} />}
+            refreshControl={<RefreshControl refreshing={pullRefreshing} onRefresh={() => void refreshByPull()} />}
             style={styles.list}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <RequestState loading={resource.loading && !resource.data} error={resource.error} onRetry={() => void resource.refresh()} />
+            <RequestState loading={false} error={resource.error} onRetry={() => void resource.refresh()} />
             {conversations.length > 0 ? (
               conversations.map((conversation) => (
                 <ConversationCard
@@ -99,9 +110,16 @@ const styles = StyleSheet.create({
   },
   header: {
     height: 54,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
+  },
+  loadingSlot: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     color: colors.text,

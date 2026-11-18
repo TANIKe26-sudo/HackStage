@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { router } from 'expo-router';
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MainTabBar, type MainTabId } from '../components/MainTabBar';
@@ -14,8 +14,15 @@ export default function LikesReceivedScreen() {
   const api = useMainApi();
   const resource = useResource(api.likes, 10000);
   const [removed, setRemoved] = useState<string[]>([]);
+  const [pullRefreshing, setPullRefreshing] = useState(false);
   const inFlight = useRef(false);
   const receivedLikes = (resource.data?.likes ?? []).filter(p => !removed.includes(p.user_id)).map(profileCard);
+  const refreshByPull = async () => {
+    if (pullRefreshing) return;
+    setPullRefreshing(true);
+    try { await resource.refresh(); }
+    finally { setPullRefreshing(false); }
+  };
   const decide = async (profileId: string, accept: boolean) => {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -44,15 +51,18 @@ export default function LikesReceivedScreen() {
       <View style={styles.screen}>
         <View style={styles.header}>
           <Text style={styles.title}>届いたいいね</Text>
+          <View style={styles.loadingSlot}>
+            {resource.loading && !pullRefreshing ? <ActivityIndicator size="small" color={colors.mutedText} accessibilityLabel="更新中" /> : null}
+          </View>
         </View>
 
         <ScrollView
-          refreshControl={<RefreshControl refreshing={resource.loading} onRefresh={() => void resource.refresh()} />}
+          refreshControl={<RefreshControl refreshing={pullRefreshing} onRefresh={() => void refreshByPull()} />}
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         >
-          <RequestState loading={resource.loading && !resource.data} error={resource.error} onRetry={() => void resource.refresh()} />
+          <RequestState loading={false} error={resource.error} onRetry={() => void resource.refresh()} />
           {receivedLikes.length > 0 ? (
             receivedLikes.map((profile) => (
               <ReceivedLikeCard
@@ -83,9 +93,16 @@ const styles = StyleSheet.create({
   },
   header: {
     height: 54,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
+  },
+  loadingSlot: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     color: colors.text,
