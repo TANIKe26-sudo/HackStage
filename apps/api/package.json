@@ -15,11 +15,16 @@
     "typecheck:cloudflare": "tsc --noEmit -p tsconfig.cloudflare.json",
     "d1:migrate:local": "wrangler d1 migrations apply nodobito-db --local --config wrangler.jsonc",
     "d1:migrate:remote": "wrangler d1 migrations apply DB --remote --env production --config wrangler.jsonc",
-    "backup": "node --env-file-if-exists=../../.env scripts/backup.mjs"
+    "backup": "node --env-file-if-exists=../../.env scripts/backup.mjs",
+    "backup:cloudflare": "node scripts/cloudflare-backup.mjs backup",
+    "restore:cloudflare": "node scripts/cloudflare-backup.mjs restore",
+    "test:cloudflare": "node --import tsx --test tests/cloudflare.test.ts"
   },
   "dependencies": {
     "express": "^5.1.0",
-    "hono": "^4.13.19"
+    "fast-png": "^8.0.0",
+    "hono": "^4.13.19",
+    "jpeg-js": "^0.4.4"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261117.1",

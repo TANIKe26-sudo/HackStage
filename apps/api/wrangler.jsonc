@@ -5,6 +5,8 @@
   "compatibility_date": "2026-11-17",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": { "APP_ENV": "development" },
   "d1_databases": [
     {
       "binding": "DB",
@@ -22,6 +24,7 @@
       "name": "nodobito-api",
       "account_id": "94525e870e53136c86279f0a75bc70b6",
       "workers_dev": true,
+      "vars": { "APP_ENV": "production" },
       "d1_databases": [
         {
           "binding": "DB",

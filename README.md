@@ -58,18 +58,9 @@
 
 これにより、他人の写真の流用や過度な加工による写真詐欺を抑制する。
 
-### 2.4 本人確認・初回撮影
+### 2.4 初回撮影
 
-新規登録時に本人確認を兼ねた撮影を実施する。
-
-撮影範囲：
-- 首周り
-- 顔全体
-- 頭部
-
-初回登録時に首から頭までの全体を撮影し、本人確認用の情報として利用する。
-
-通常のプロフィール表示では、最初からすべての情報を公開せず、後述する段階的な公開システムを採用する。
+プロフィール用に首から頭までをアプリ内で撮影します。本人確認・年齢確認の申請や審査は行わず、プロフィール登録後に利用できます。
 
 ## 3. 主要機能
 
@@ -210,7 +201,7 @@ React NativeとExpoを利用することで、共通のコードベースからi
 | マッチングしない | スワイプ式UIで直感的なマッチングを実現する |
 | メッセージが続かない | デイリー機能によって会話のきっかけを提供する |
 | 写真詐欺 | アプリ内カメラ限定で撮影・投稿する |
-| なりすまし | 登録時の本人確認撮影を導入する |
+| なりすまし | アプリ内撮影・通報・ブロックで対応する |
 | 業者・詐欺 | 通報・ブロック機能を導入する |
 | 遊び目的の利用者 | 利用目的の登録やプロフィール表示を検討する |
 | 男女間の料金格差 | 性別による不公平な料金設定を避ける |
@@ -220,7 +211,7 @@ React NativeとExpoを利用することで、共通のコードベースからi
 | ドタキャン | 約束・予定の確認機能を検討する |
 | 課金への不満 | 基本的なマッチング機能を利用できる料金体系を検討する |
 | 選択肢が多すぎる | 段階的な情報公開によって相手を知る時間を作る |
-| 安全面の問題 | 通報・ブロック・本人確認などの安全機能を実装する |
+| 安全面の問題 | 通報・ブロックなどの安全機能を実装する |
 
 ## 7. 今後の開発予定
 
@@ -246,7 +237,6 @@ React NativeとExpoを利用することで、共通のコードベースからi
 - [ ] 会話率による公開範囲の調整
 
 ### Phase 4：安全性・品質向上
-- [ ] 本人確認機能
 - [ ] 通報・ブロック機能
 - [ ] 不正利用対策
 - [ ] 個人情報・画像の保護
@@ -257,7 +247,6 @@ React NativeとExpoを利用することで、共通のコードベースからi
 
 - 正式なアプリ名・ロゴ
 - データベースの選定
-- 本人確認の具体的な方法
 - 喉仏の有無による分類方法と例外への対応
 - デイリー課題の種類と達成条件
 - 親密度ポイントの計算方法
@@ -266,7 +255,7 @@ React NativeとExpoを利用することで、共通のコードベースからi
 - 通報・ブロック機能の詳細
 - 利用料金・課金システム
 - プライバシーポリシー・利用規約
-- 年齢確認と未成年者の利用防止
+- プロフィールの年齢入力と利用条件
 - 性別や身体的特徴に関するプライバシーへの配慮
 
 ---
@@ -328,9 +317,11 @@ apps/
 
 ## バックエンドAPI
 
+現行のCloudflare版の機能・API・運営画面・バックアップ・テスト手順は [バックエンド詳細](docs/backend.md) を参照してください。本人確認・年齢確認の承認待ちは廃止しています。
+
 ### Cloudflare版（D1 + Workers + R2）
 
-Cloudflareで動かすAPI実装は`apps/api/src/cloudflare.ts`です。メールアドレスとパスワードで登録・ログインし、パスワードはPBKDF2でハッシュ化して保存します。APIは期限付きBearerセッションを発行し、アプリはSecureStoreに保存します。メールアドレス確認メールの送信は未実装です。
+Cloudflareで動かすAPI実装は`apps/api/src/cloudflare.ts`です。メールアドレスとパスワードで登録・ログインし、パスワードはPBKDF2でハッシュ化して保存します。APIは期限付きBearerセッションを発行し、アプリはSecureStoreに保存します。メール確認・パスワード再設定は開発用コード発行とResend連携に対応しています。本番の送信にはメールサービスの設定が必要です。
 
 - Cloudflare D1：ユーザー、プロフィール、いいね、マッチ、会話、日課、安全・運営記録
 - Cloudflare R2：非公開の撮影画像。画像APIが権限と公開同意を確認してから要求時にストリーム配信し、公開URLは発行しません
@@ -368,7 +359,7 @@ npx wrangler r2 bucket create nodobito-private-captures
 npm run d1:migrate:remote
 ```
 
-R2バケットは事前に利用を有効化し、すでに同名のものがあれば再作成は不要です。本番用の秘密値は`npx wrangler secret put <キー名> --env production`で登録してください。必要なキーは`SESSION_SECRET`、`CONTACT_HASH_KEY`、`DATE_LOCATION_KEY`、`ADMIN_SAFETY_KEY`、`ADMIN_VERIFICATION_KEY`、`ADMIN_CONTENT_KEY`、`ADMIN_AUDIT_KEY`です。用途ごとに異なるランダムな値を使い、`DATE_LOCATION_KEY`は32バイトをBase64化した値にします。Expo Pushを使う場合は`EXPO_ACCESS_TOKEN`も登録します。秘密情報をGitへコミットしないでください。
+R2バケットは事前に利用を有効化し、すでに同名のものがあれば再作成は不要です。本番用の秘密値は`npx wrangler secret put <キー名> --env production`で登録してください。必要なキーは`SESSION_SECRET`、`CONTACT_HASH_KEY`、`DATE_LOCATION_KEY`、`ADMIN_SAFETY_KEY`、`ADMIN_CONTENT_KEY`、`ADMIN_AUDIT_KEY`です。用途ごとに異なるランダムな値を使い、`DATE_LOCATION_KEY`は32バイトをBase64化した値にします。Expo Pushを使う場合は`EXPO_ACCESS_TOKEN`も登録します。秘密情報をGitへコミットしないでください。
 
 リポジトリルートで`npm run deploy:cloudflare --workspace @nodobito/api`を実行すると本番環境へデプロイします。出力されたHTTPS URLの`/health/ready`で`{"ok":true,"database":"ready"}`が返ることを確認し、モバイルの`EXPO_PUBLIC_API_BASE_URL`へそのURLを設定してExpoを再起動します。独自ドメインはAPIの公開後にWorkerへ追加できます。
 
@@ -413,17 +404,17 @@ APIを起動したまま、上の「画面を実機で確認する」にあるEx
 
 新規登録はメールアドレスと12〜128文字のパスワードを使い、登録後にプロフィール画面へ進みます。ローカル開発では`--local`のD1を使うため、データはCloudflare Dashboard上のリモートD1ではなくPCに保存されます。
 
-`npm run dev:api`（Express + SQLite）は別のローカル試作APIです。現在のモバイル認証はCloudflare APIへ接続するため、ログイン・新規登録を確認するときは上記のCloudflare手順を使います。Cloudflare版はExpress版と別DBであり、SQLiteの既存データ移行は自動では行いません。Cloudflareアカウント上のリソース作成・秘密値設定・デプロイは、この作業環境からは実行していません。
+`npm run dev:api:legacy`（Express + SQLite）は別のローカル試作APIです。現在のモバイル認証はCloudflare APIへ接続するため、ログイン・新規登録を確認するときは上記のCloudflare手順を使います。Cloudflare版はExpress版と別DBであり、SQLiteの既存データ移行は自動では行いません。Cloudflareアカウント上のリソース作成・秘密値設定・デプロイは、この作業環境からは実行していません。
 
 ### Node.jsローカル試作版
 
 ExpressとNode.jsの`node:sqlite`で開発用APIを実装しています。DBは`apps/api/data/app.sqlite`、画像は公開ディレクトリ外の`apps/api/private/captures/`へ保存します。どちらもGitには登録しません。
 
-起動は`npm run dev:api`、疎通確認は`GET http://localhost:3000/health/ready`です。運営APIを有効にする場合は、`apps/api/.env.example`を参考にリポジトリルートの`.env`を作成し、運営の役割ごとに異なるキーを設定します。各運営APIは`x-admin-key`ヘッダーを要求します。
+起動は`npm run dev:api:legacy`、疎通確認は`GET http://localhost:3000/health/ready`です。運営APIを有効にする場合は、`apps/api/.env.example`を参考にリポジトリルートの`.env`を作成し、運営の役割ごとに異なるキーを設定します。各運営APIは`x-admin-key`ヘッダーを要求します。
 
-キーは`ADMIN_USERS_KEY`、`ADMIN_VERIFICATION_KEY`、`ADMIN_CONTENT_KEY`、`ADMIN_SAFETY_KEY`、`ADMIN_AUDIT_KEY`に分けています。`.env`の鍵はリポジトリにコミットしないでください。
+キーは`ADMIN_USERS_KEY`、`ADMIN_CONTENT_KEY`、`ADMIN_SAFETY_KEY`、`ADMIN_AUDIT_KEY`に分けています。`.env`の鍵はリポジトリにコミットしないでください。
 
-### API一覧
+### 従来のExpress版API一覧（Cloudflare版は上記の詳細を参照）
 
 認証が必要なAPIには`Authorization: Bearer <token>`を付けます。
 
@@ -438,9 +429,9 @@ ExpressとNode.jsの`node:sqlite`で開発用APIを実装しています。DBは
 | 初回デート | `GET/POST /matches/:id/date-plans`、`PATCH /matches/:id/date-plans/:planId/consent`、`POST .../reschedule`、`POST .../cancel`、`POST .../arrival` |
 | 安全・異議申し立て | `POST/DELETE /users/:id/block`、`POST /users/:id/reports`、`POST/GET /appeals` |
 | 通知 | `PUT/DELETE /notifications/push-token`、`GET /notifications`、`PATCH /notifications/:id/read`、`PATCH /notifications/read-all` |
-| 運営 | `GET /admin/users`、`GET /admin/verifications`、`GET /admin/daily`、`GET /admin/reports`、`GET /admin/safety-flags`、`GET /admin/appeals`、`GET /admin/audit`、`GET /admin/operations/summary` |
+| 運営 | `GET /admin/users`、`GET /admin/daily`、`GET /admin/reports`、`GET /admin/safety-flags`、`GET /admin/appeals`、`GET /admin/audit`、`GET /admin/operations/summary` |
 
-主要なリクエスト例：プロフィールは`{ "displayName": "表示名", "age": 25, "area": "東京都", "bio": "自己紹介" }`、年齢確認申請は`{ "adultConfirmed": true }`、いいねは`{ "toUserId": "ユーザーID" }`、デイリー回答は`{ "topicId": "課題ID", "answer": "回答" }`です。撮影登録は`{ "captureSource": "in_app_camera", "stage": 0, "imageData": "data:image/jpeg;base64,..." }`を受け付けます。
+主要なリクエスト例：プロフィールは`{ "displayName": "表示名", "age": 25, "area": "東京都", "bio": "自己紹介" }`、いいねは`{ "toUserId": "ユーザーID" }`、デイリー回答は`{ "topicId": "課題ID", "answer": "回答" }`です。撮影登録は`{ "captureSource": "in_app_camera", "stage": 0, "imageData": "data:image/jpeg;base64,..." }`を受け付けます。
 
 段階公開は同じマッチ内で双方がメッセージした日数と、双方が回答した課題数から算出します。相互発言3日で段階1、7日と共同回答1件で段階2、14日と3件で段階3、30日と7件で段階4です。課金による解放はありません。
 
@@ -448,11 +439,11 @@ ExpressとNode.jsの`node:sqlite`で開発用APIを実装しています。DBは
 
 - 紹介条件は`relationshipGoal`、`conversationPace`、相手に求める条件、喉仏分類の希望で管理します。双方の条件が合う候補だけを紹介し、累計表示回数の少ないプロフィールを優先してローテーションします。有料優先表示の経路はありません。候補数と少ない場合の案内も返します。
 - 公開画像は相手とのマッチごとに、所有者が段階と期限を指定して同意します。取り消し・期限切れは画像取得ごとに再確認されます。相手には画像を事前配布せず、認証済みの画像APIが要求時にのみストリーム配信します。閲覧履歴は所有者と運営が確認できます。
-- 連絡先非表示APIは、ユーザーが同意した連絡先をサーバー秘密鍵付きHMACで照合用ダイジェストに変換し、元の電話帳情報は保存しません。登録メールと運営が確認済みの電話識別子に一致する候補を検索結果から除外します。電話識別子の確認には別途本人確認運用が必要です。
+- 連絡先非表示APIは、ユーザーが同意した連絡先をサーバー秘密鍵付きHMACで照合用ダイジェストに変換し、元の電話帳情報は保存しません。登録メールと運営が確認済みの電話識別子に一致する候補を検索結果から除外します。電話識別子の登録運用は別途必要です。
 - 初回デート予定はマッチ相手だけに共有し、予定、エリア、正確な場所、到着状態を個別の同意範囲として扱います。正確な場所は`DATE_LOCATION_KEY`によるAES-256-GCM暗号文として保存し、双方の同意・確認と有効期限が満たされたときだけ復号して返します。再調整、取消、到着は通知と監査ログに記録します。
 - メッセージの外部リンクや投資勧誘語句を検知すると警告を返して運営確認キューに登録します。運営は警告、メッセージ削除、期限付き利用制限、見送りを選べます。利用者は異議申し立てを送信できます。
 - 通知はアプリ内通知として保存し、登録済みExpo Push Tokenにはバックグラウンドキューから送信します。Expo Push Serviceが受理した時点を送信済みとして記録し、失敗時は再試行します。
-- 運営キーをユーザー管理、本人確認、コンテンツ、安全、監査の役割ごとに分離します。主要操作と判断を監査ログに記録します。
+- 運営キーをユーザー管理、コンテンツ、安全、監査の役割ごとに分離します。主要操作と判断を監査ログに記録します。
 
 `.env`の`CONTACT_HASH_KEY`にはランダムな秘密値を、`DATE_LOCATION_KEY`にはBase64形式のランダム32バイト鍵を設定します。鍵を変更すると保存済みの連絡先ダイジェストとの照合や既存予定の復号ができなくなるため、鍵管理・バックアップを行ってください。
 
@@ -466,11 +457,11 @@ DBと画像を`backups/api/`以下に保存します。復旧時はAPIを停止�
 
 ### 実装範囲と制約
 
-- 年齢確認は申請状態と運営承認を管理します。公的証明書の照合サービスは未接続です。確認用の個人情報と公開プロフィールは別テーブルに分け、証明書画像はこのAPIでは保存しません。
-- 喉仏分類は運営が`present`、`absent`、`pending`を設定します。画像からの自動推定や性別判定は行いません。
+- 本人確認・年齢確認の申請・承認フローは廃止しています。
+- 喉仏分類は`present`、`absent`、`pending`で管理します。Cloudflare版には任意のAI分類候補APIがあります。適用は利用者が確認し、性別判定は行いません。
 - 画像は非公開保存し、所有者またはマッチ相手に限定して配信します。取得時に公開段階を再確認し、アクセスログを記録します。
 - `captureSource: in_app_camera`はアプリからの申告値です。サーバーだけで画像が端末カメラから来たことは証明できません。
-- ブロック、通報、運営による利用停止、ログインや投稿の回数制限を実装しています。運営画面UI、画像透かし、画像内の不正検出、年齢確認プロバイダー、個人別の運営アカウント管理は未実装です。
+- ブロック、通報、運営による利用停止、ログインや投稿の回数制限を実装しています。Cloudflare版には運営画面とスタッフ別権限があります。画像透かし・画像内の不正検出は実装していません。
 - 投資等の検知はルールベースで、誤検知と見逃しがあります。到着確認は本人の操作申告であり、GPS到着証明ではありません。画像やメッセージは共有後に保存・撮影される可能性をサーバーだけでは排除できません。
 - Expo Pushの送信には端末側の通知登録、iOS/Androidのプッシュ資格情報、Expo Push Tokenが必要です。実機プッシュはExpo Goではなく開発ビルドで確認します。
 - SQLiteはローカル開発用です。Node.jsの`node:sqlite`は同期APIで、実験的機能の警告が出ます。本番運用前にPostgreSQL等のサーバーDB、TLS、秘密情報管理、バックアップ、保持期間、複数インスタンスで共有するレート制限と通知キューを用意してください。
