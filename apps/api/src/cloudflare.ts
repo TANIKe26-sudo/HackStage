@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { classificationRoutes } from './cloudflare/classification.js';
 import { registerMobileRoutes } from './cloudflare/mobile.js';
 import { cors } from 'hono/cors';
 import { bodyLimit } from 'hono/body-limit';
@@ -50,6 +51,7 @@ authRoutes(app);
 profileRoutes(app);
 communicationRoutes(app);
 mediaRoutes(app);
+classificationRoutes(app);
 dateRoutes(app);
 adminRoutes(app);
 registerMobileRoutes(app);

@@ -21,6 +21,12 @@ export class ApiError extends Error {
 }
 
 const errorMessages: Record<string, string> = {
+  classification_model_license_required: 'AIモデルの利用規約への同意がまだ必要です。運営側で設定してください。',
+  classification_service_not_configured: 'AI推定がまだ設定されていません。判定保留で進むこともできます。',
+  classification_references_not_configured: 'AI比較用の参考画像が未設定です。',
+  classification_service_unavailable: 'AI推定を利用できませんでした。しばらくしてから再度お試しください。',
+  classification_image_unavailable: '比較画像を準備できませんでした。撮り直してください。',
+  classification_requires_neck_crop: '首周りの公開画像を撮影し直してから推定してください。',
   feature_restricted: 'この機能は一時的に利用が制限されています。',
   resize_capture_before_upload: '画像サイズが大きすぎます。撮影し直してください。',
   topic_not_today: 'このお題の受付は終了しています。再読み込みしてください。',

@@ -1,3 +1,4 @@
+import { classifyNeck } from './classification.js';
 import { Buffer } from 'node:buffer';
 import * as jpeg from 'jpeg-js';
 import { decode as decodePng, convertIndexedToRgb } from 'fast-png';
@@ -214,22 +215,14 @@ export function mediaRoutes(app: App) {
         const body = await input(c);
         if (body.consent !== true)
             fail(400, 'classification_consent_required');
-        await rate(c, 'classify', c.get('userId'), 3, 3600);
+        await rate(c, 'classify', c.get('userId'), 6, 3600);
         const row = await c.env.DB.prepare('SELECT * FROM captures WHERE id=? AND owner_id=? AND stage=0').bind(c.req.param('id'), c.get('userId')).first<Row>();
         if (!row)
             return fail(404, 'not_found');
-        if (!c.env.AI)
-            fail(503, 'classification_service_not_configured');
+        if (!row.original_key && !String(row.object_key).startsWith('public/')) fail(400, 'classification_requires_neck_crop');
+        await limited(c, 'posting');
         const image = await c.env.CAPTURES.get(row.object_key);
-        if (!image)
-            return fail(404, 'not_found');
-        const bytes = new Uint8Array(await image.arrayBuffer());
-        const result = await c.env.AI!.run('@cf/meta/llama-3.2-11b-vision-instruct', {
-            prompt: 'Describe only whether a clearly protruding laryngeal prominence is visibly present in this neck crop. Do not infer sex, gender, identity or age. Return exactly JSON with a classification field containing present, absent or pending. Use pending whenever uncertain or the neck is not clearly visible.',
-            image: Array.from(bytes), max_tokens: 64, temperature: 0,
-        }) as Row;
-        const output = String(result.response ?? result.choices?.[0]?.message?.content ?? ''), found = output.match(/"classification"\s*:\s*"(present|absent|pending)"/), classification = found?.[1] ?? 'pending';
-        await audit(c.env, 'classification_suggested', c.get('userId'), row.id, { classification });
-        return c.json({ classification, requiresUserConfirmation: true });
+        if (!image) return fail(404, 'not_found');
+        return c.json(await classifyNeck(c, new Uint8Array(await image.arrayBuffer()), row.id));
     });
 }

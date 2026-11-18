@@ -72,7 +72,7 @@ Cloudflare版が開発対象です。`npm run dev:api`もCloudflare版を起動�
 
 `DELETE /api/captures/:id`は同じ撮影の全段階と原画像を削除します。`GET /api/captures/:id/access-history`は所有者向けの閲覧履歴です。
 
-`POST /api/captures/:id/classification`は`consent:true`を指定した場合だけ、Workers AIへ首部分を送り分類候補を返します。利用する場合だけWranglerへAIバインディング`AI`を追加してください。未設定なら503を返します。モデルの利用開始にはCloudflare側でモデルの規約同意も必要です。結果は`present/absent/pending`の候補であり、自動的にプロフィールへ適用しません。利用者が確認して`PATCH /api/profile`で確定します。医学的な性別・年齢・本人判定には使用しません。モデルの精度評価と利用料金は別途確認してください。
+`POST /api/classifications/throat`は撮影した首周りのプレビュー、`POST /api/captures/:id/classification`は所有する切り出し画像を推定します。`consent:true`が必要です。非公開R2に保存した参考例2枚との比較で `present/absent/pending` を返し、プロフィールへの適用は利用者の確認後に行います。AIや参考画像の未設定・モデル規約の未同意は503です。[準備・起動・検証手順](throat-classification.md)を参照してください。
 
 ## デート予定・プライバシー
 

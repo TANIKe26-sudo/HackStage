@@ -1,16 +1,17 @@
+import type { PropsWithChildren } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { SignUpDraftProvider } from '../features/auth/context/SignUpDraftContext';
-import { AuthProvider } from '../features/auth/context/AuthContext';
+import { AuthProvider, useAuth } from '../features/auth/context/AuthContext';
 import { colors } from '../theme/tokens';
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <SignUpDraftProvider>
+        <SessionDraftProvider>
           <StatusBar style="dark" />
           <Stack
             screenOptions={{
@@ -18,8 +19,13 @@ export default function RootLayout() {
               contentStyle: { backgroundColor: colors.background },
             }}
           />
-        </SignUpDraftProvider>
+        </SessionDraftProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );
+}
+
+function SessionDraftProvider({ children }: PropsWithChildren) {
+  const { token } = useAuth();
+  return <SignUpDraftProvider key={token ?? 'logged-out'}>{children}</SignUpDraftProvider>;
 }

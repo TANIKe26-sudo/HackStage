@@ -1,3 +1,4 @@
+import { classificationLabels } from '../api/classification';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -11,7 +12,7 @@ import { useSignUpDraft } from '../context/SignUpDraftContext';
 import { colors, spacing } from '../../../theme/tokens';
 
 export default function SignUpScreen() {
-  const { profilePhotoUri, profilePhotoDataUrl, setProfilePhotoDataUrl } = useSignUpDraft();
+  const { profilePhotoUri, profilePhotoDataUrl, setProfilePhotoDataUrl, profilePhotoClassification, setProfilePhotoClassification } = useSignUpDraft();
   const { profile, token, saveProfile } = useAuth();
   const [name, setName] = useState(profile?.display_name ?? '');
   const [age, setAge] = useState(
@@ -61,12 +62,13 @@ export default function SignUpScreen() {
           area: area.trim(),
           purpose: purpose.trim(),
           conversation_pace: profile?.conversation_pace ?? 'balanced',
-          throat_class: profile?.throat_class ?? 'pending',
+          throat_class: profilePhotoClassification ?? profile?.throat_class ?? 'pending',
           bio: profile?.bio ?? '',
         },
         profilePhotoDataUrl,
       );
       setProfilePhotoDataUrl(null);
+      setProfilePhotoClassification(null);
       router.replace('/discover');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'プロフィールを保存できませんでした。');
@@ -158,8 +160,8 @@ export default function SignUpScreen() {
         </View>
 
         <View style={styles.categoryCard}>
-          <Text style={styles.categoryTitle}>カテゴリ</Text>
-          <Text style={styles.categoryValue}>喉仏あり / 男性カテゴリ</Text>
+          <Text style={styles.categoryTitle}>喉仏の写り方</Text>
+          <Text style={styles.categoryValue}>{classificationLabels[profilePhotoClassification ?? profile?.throat_class ?? 'pending']}</Text>
         </View>
 
         {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
