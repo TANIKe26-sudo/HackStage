@@ -1,12 +1,22 @@
-import { Ionicons } from '@react-native-vector-icons/ionicons';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing } from '../../../theme/tokens';
 import type { Conversation } from '../data/demoConversations';
 
-export function ConversationCard({ conversation }: { conversation: Conversation }) {
+export function ConversationCard({
+  conversation,
+  onPress,
+}: {
+  conversation: Conversation;
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.card}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${conversation.name}さんとのトークを開く`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+    >
       <View style={styles.photoPlaceholder}>
         <Text style={styles.noImage}>No image</Text>
       </View>
@@ -25,14 +35,8 @@ export function ConversationCard({ conversation }: { conversation: Conversation 
           <Text style={styles.timestamp}>{conversation.updatedAt}</Text>
           {conversation.hasUnread ? <View style={styles.unreadDot} /> : null}
         </View>
-        <Ionicons
-          name="chevron-forward"
-          size={18}
-          color={colors.mutedText}
-          style={styles.chevronOffset}
-        />
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -47,6 +51,9 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     backgroundColor: colors.surface,
     padding: 8,
+  },
+  pressed: {
+    opacity: 0.75,
   },
   photoPlaceholder: {
     width: 64,
@@ -95,9 +102,6 @@ const styles = StyleSheet.create({
   timestamp: {
     color: colors.mutedText,
     fontSize: 11,
-  },
-  chevronOffset: {
-    transform: [{ translateY: 4 }],
   },
   unreadDot: {
     width: 8,

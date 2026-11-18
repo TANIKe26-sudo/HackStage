@@ -55,7 +55,16 @@ export default function MatchesScreen() {
           >
             {conversations.length > 0 ? (
               conversations.map((conversation) => (
-                <ConversationCard key={conversation.id} conversation={conversation} />
+                <ConversationCard
+                  key={conversation.id}
+                  conversation={conversation}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/chat/[conversationId]',
+                      params: { conversationId: conversation.id },
+                    })
+                  }
+                />
               ))
             ) : (
               <Text style={styles.emptyMessage}>トークが見つかりません</Text>
