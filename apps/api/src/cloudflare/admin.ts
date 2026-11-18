@@ -113,7 +113,10 @@ export function adminRoutes(app: App) {
         await audit(c.env, 'user_blocked', me, target);
         return c.json({ ok: true });
     });
-    app.get('/api/blocks', async (c) => c.json(await c.env.DB.prepare('SELECT blocked_id,created_at FROM blocks WHERE blocker_id=? ORDER BY created_at DESC').bind(c.get('userId')).all()));
+    app.get('/api/blocks', async c => {
+        const rows = await c.env.DB.prepare(`SELECT b.blocked_id,b.blocked_id AS user_id,p.display_name,b.created_at FROM blocks b JOIN profiles p ON p.user_id=b.blocked_id WHERE b.blocker_id=? ORDER BY b.created_at DESC`).bind(c.get('userId')).all();
+        return c.json({ ...rows, blocks: rows.results });
+    });
     app.delete('/api/blocks/:id', async (c) => { await c.env.DB.prepare('DELETE FROM blocks WHERE blocker_id=? AND blocked_id=?').bind(c.get('userId'), c.req.param('id')).run(); return c.json({ ok: true }); });
     app.post('/api/reports', async (c) => {
         const body = await input(c), target = text(body.subjectId, 100, true), category = text(body.category, 60, true), details = text(body.details ?? '', 3000);

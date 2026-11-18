@@ -1,3 +1,4 @@
+import { captureRegions } from '../captureRegions';
 import * as SecureStore from 'expo-secure-store';
 import { createContext, useContext, useEffect, useState, type PropsWithChildren } from 'react';
 import { Platform } from 'react-native';
@@ -24,6 +25,7 @@ type AuthContextValue = {
   logIn: (email: string, password: string) => Promise<AuthProfile | null>;
   saveProfile: (profile: ProfileInput, photoDataUrl?: string | null) => Promise<void>;
   logOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -92,12 +94,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (photoDataUrl) {
       await apiRequest('/api/captures', token, {
         method: 'POST',
-        body: JSON.stringify({ dataUrl: photoDataUrl, stage: 0 }),
+        body: JSON.stringify({ dataUrl: photoDataUrl, regions: captureRegions }),
       });
     }
 
     const current = await apiRequest<{ profile: AuthProfile | null }>('/api/me', token);
     setProfile(current.profile);
+  };
+
+  const refreshProfile = async () => {
+    if (!token) return;
+    const result = await apiRequest<{ profile: AuthProfile | null }>('/api/me', token);
+    setProfile(result.profile);
   };
 
   const logOut = async () => {
@@ -111,7 +119,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   };
 
   return (
-    <AuthContext.Provider value={{ isRestoring, token, profile, createAccount, logIn, saveProfile, logOut }}>
+    <AuthContext.Provider value={{ isRestoring, token, profile, createAccount, logIn, saveProfile, logOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

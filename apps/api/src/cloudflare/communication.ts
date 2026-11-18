@@ -65,12 +65,16 @@ export async function dispatchPush(env: Env) {
 export function communicationRoutes(app: App) {
     app.get('/api/matches', async (c) => {
         const me = c.get('userId'), { limit, offset } = page(c);
-        const rows = await c.env.DB.prepare(`SELECT m.id,m.created_at,p.user_id AS other_user_id,p.display_name,
+        const rows = await c.env.DB.prepare(`SELECT m.id,m.created_at,p.user_id AS other_user_id,p.user_id,p.display_name,p.birth_year,p.purpose,
+      CASE WHEN p.location_scope='area' THEN p.area ELSE NULL END AS area,p.bio,p.conversation_pace,p.throat_class,
+      (SELECT id FROM captures WHERE owner_id=p.user_id AND stage=0 AND (original_key IS NOT NULL OR object_key LIKE 'public/%') ORDER BY created_at DESC LIMIT 1) AS capture_id,
+      (SELECT body FROM messages WHERE match_id=m.id AND deleted_at IS NULL ORDER BY sequence DESC LIMIT 1) AS last_message,
+      COALESCE((SELECT created_at FROM messages WHERE match_id=m.id AND deleted_at IS NULL ORDER BY sequence DESC LIMIT 1),m.created_at) AS updated_at,
       (SELECT COUNT(*) FROM messages x WHERE x.match_id=m.id AND x.sender_id<>? AND x.deleted_at IS NULL AND x.sequence>COALESCE((SELECT sequence FROM message_reads WHERE match_id=m.id AND user_id=?),0)) AS unread_count
       FROM matches m JOIN profiles p ON p.user_id=CASE WHEN m.user_low=? THEN m.user_high ELSE m.user_low END WHERE (m.user_low=? OR m.user_high=?)
       AND NOT EXISTS(SELECT 1 FROM blocks WHERE (blocker_id=? AND blocked_id=p.user_id) OR (blocker_id=p.user_id AND blocked_id=?))
-      ORDER BY m.created_at DESC LIMIT ? OFFSET ?`).bind(me, me, me, me, me, me, me, limit, offset).all();
-        return c.json({ ...rows, nextOffset: rows.results.length === limit ? offset + limit : null });
+      ORDER BY updated_at DESC LIMIT ? OFFSET ?`).bind(me, me, me, me, me, me, me, limit, offset).all();
+        return c.json({ ...rows, matches: rows.results, nextOffset: rows.results.length === limit ? offset + limit : null });
     });
     app.get('/api/matches/:id/progress', async (c) => { await member(c, c.req.param('id')); return c.json(await stageProgress(c.env, c.req.param('id'))); });
     app.get('/api/matches/:id/messages', async (c) => {
@@ -80,7 +84,7 @@ export function communicationRoutes(app: App) {
         const rows = await c.env.DB.prepare(`SELECT id,sender_id,body,warning,created_at,sequence FROM messages WHERE match_id=? AND deleted_at IS NULL AND sequence<? AND sequence>? ORDER BY sequence ${after > 0 ? 'ASC' : 'DESC'} LIMIT ?`).bind(match.id, before, after, limit).all<Row>();
         const read = await c.env.DB.prepare('SELECT sequence,read_at FROM message_reads WHERE match_id=? AND user_id=?').bind(match.id, match.other).first<Row>();
         const messages = after > 0 ? rows.results : rows.results.reverse();
-        return c.json({ results: messages, nextBefore: after === 0 && messages.length === limit ? messages[0].sequence : null, nextAfter: messages.length ? messages[messages.length - 1].sequence : after, otherReadSequence: read?.sequence ?? 0, otherReadAt: read?.read_at ?? null });
+        return c.json({ results: messages, messages, me: c.get('userId'), nextBefore: after === 0 && messages.length === limit ? messages[0].sequence : null, nextAfter: messages.length ? messages[messages.length - 1].sequence : after, otherReadSequence: read?.sequence ?? 0, otherReadAt: read?.read_at ?? null });
     });
     app.post('/api/matches/:id/messages', async (c) => {
         await limited(c, 'messaging');

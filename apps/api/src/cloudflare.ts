@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { registerMobileRoutes } from './cloudflare/mobile.js';
 import { cors } from 'hono/cors';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
@@ -51,6 +52,7 @@ communicationRoutes(app);
 mediaRoutes(app);
 dateRoutes(app);
 adminRoutes(app);
+registerMobileRoutes(app);
 app.notFound(c => c.json({ error: 'not_found' }, 404));
 app.onError((error, c) => {
     if (error instanceof HTTPException)

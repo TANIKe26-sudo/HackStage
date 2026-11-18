@@ -61,7 +61,7 @@ export default function SignUpScreen() {
           area: area.trim(),
           purpose: purpose.trim(),
           conversation_pace: profile?.conversation_pace ?? 'balanced',
-          throat_class: profile?.throat_class ?? 'present',
+          throat_class: profile?.throat_class ?? 'pending',
           bio: profile?.bio ?? '',
         },
         profilePhotoDataUrl,
@@ -87,7 +87,7 @@ export default function SignUpScreen() {
           >
             <Text style={styles.backLabel}>‹</Text>
           </Pressable>
-          <Text style={styles.title}>新規登録</Text>
+          <Text style={styles.title}>{profile?.birth_year ? 'プロフィール編集' : '新規登録'}</Text>
           <View style={styles.headerSpacer} />
         </View>
 

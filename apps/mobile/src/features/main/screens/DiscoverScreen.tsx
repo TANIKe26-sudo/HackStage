@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { Animated, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, Animated, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,37 +8,52 @@ import { DiscoverEmptyState } from '../components/DiscoverEmptyState';
 import { DiscoverProfileCard } from '../components/DiscoverProfileCard';
 import { DiscoverSwipeActions } from '../components/DiscoverSwipeActions';
 import { MainTabBar, type MainTabId } from '../components/MainTabBar';
-import { demoProfiles } from '../data/demoProfiles';
+import { profileCard, useMainApi } from '../api/client';
+import { useResource } from '../api/useResource';
+import { RequestState } from '../components/RequestState';
 
 type SwipeDirection = 'like' | 'pass';
 
 const swipeThreshold = 100;
+// Event-only lock keyed by the stable animation value; it is never read during render.
+const activeSwipes = new WeakSet<Animated.ValueXY>();
 
 export default function DiscoverScreen() {
   const { width } = useWindowDimensions();
-  const [profileIndex, setProfileIndex] = useState(0);
-  const pan = useRef(new Animated.ValueXY()).current;
-  const swipeInProgress = useRef(false);
-  const profile = demoProfiles[profileIndex];
+  const api = useMainApi();
+  const resource = useResource(api.discover);
+  const [decided, setDecided] = useState<string[]>([]);
+  const [pan] = useState(() => new Animated.ValueXY());
+  const candidate = resource.data?.candidates.find(p => !decided.includes(p.user_id));
+  const profile = candidate ? profileCard(candidate) : undefined;
 
   const swipeOut = useCallback(
     (direction: SwipeDirection) => {
-      if (swipeInProgress.current || !profile) return;
+      if (activeSwipes.has(pan) || !profile) return;
 
-      swipeInProgress.current = true;
-      Animated.timing(pan, {
-        toValue: { x: direction === 'like' ? width * 1.3 : -width * 1.3, y: 0 },
-        duration: 220,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        swipeInProgress.current = false;
-        if (!finished) return;
-
-        pan.setValue({ x: 0, y: 0 });
-        setProfileIndex((currentIndex) => currentIndex + 1);
-      });
+      activeSwipes.add(pan);
+      void (async () => {
+        try {
+          if (direction === 'like') {
+            const result = await api.like(profile.id);
+            if (result.matched) Alert.alert('マッチしました！', 'トーク一覧から会話を始められます。');
+          } else await api.pass(profile.id);
+          Animated.timing(pan, {
+            toValue: { x: direction === 'like' ? width * 1.3 : -width * 1.3, y: 0 },
+            duration: 220, useNativeDriver: true,
+          }).start(() => {
+            pan.setValue({ x: 0, y: 0 });
+            setDecided(current => [...current, profile.id]);
+            activeSwipes.delete(pan);
+          });
+        } catch (error) {
+          pan.setValue({ x: 0, y: 0 });
+          activeSwipes.delete(pan);
+          Alert.alert('送信できませんでした', error instanceof Error ? error.message : '再度お試しください。');
+        }
+      })();
     },
-    [pan, profile, width],
+    [api, pan, profile, width],
   );
 
   const panResponder = useMemo(
@@ -46,7 +61,6 @@ export default function DiscoverScreen() {
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_event, gesture) =>
-          !swipeInProgress.current &&
           Math.abs(gesture.dx) > 10 &&
           Math.abs(gesture.dx) > Math.abs(gesture.dy),
         onPanResponderMove: (_event, gesture) => {
@@ -81,9 +95,9 @@ export default function DiscoverScreen() {
     extrapolate: 'clamp',
   });
 
-  const restartDemo = () => {
+  const refreshCandidates = () => {
     pan.setValue({ x: 0, y: 0 });
-    setProfileIndex(0);
+    void resource.refresh();
   };
 
   return (
@@ -94,6 +108,7 @@ export default function DiscoverScreen() {
         </View>
 
         <View style={styles.main}>
+          <RequestState loading={resource.loading && !resource.data} error={resource.error} onRetry={() => void resource.refresh()} />
           {profile ? (
             <>
               <View style={styles.cardSlot}>
@@ -119,7 +134,7 @@ export default function DiscoverScreen() {
               />
             </>
           ) : (
-            <DiscoverEmptyState onRestart={restartDemo} />
+            !resource.loading && !resource.error ? <DiscoverEmptyState onRestart={refreshCandidates} /> : null
           )}
         </View>
 

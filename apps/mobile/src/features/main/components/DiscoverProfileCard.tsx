@@ -1,18 +1,19 @@
+import { ProtectedPhoto } from './ProtectedPhoto';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing } from '../../../theme/tokens';
-import type { DiscoverProfile } from '../data/demoProfiles';
+import type { ProfileCard as DiscoverProfile } from '../api/client';
 
 export function DiscoverProfileCard({ profile }: { profile: DiscoverProfile }) {
   return (
     <View style={styles.cardContent}>
       <View style={styles.imagePlaceholder}>
-        <Text style={styles.noImageLabel}>No image</Text>
+        <ProtectedPhoto captureId={profile.captureId} />
       </View>
 
       <View style={styles.profileInfo}>
         <Text style={styles.profileName}>
-          {profile.name} ({profile.age})
+          {profile.name} {profile.age ? `(${profile.age})` : ''}
         </Text>
         <View style={styles.profileMeta}>
           <View style={styles.locationInfo}>

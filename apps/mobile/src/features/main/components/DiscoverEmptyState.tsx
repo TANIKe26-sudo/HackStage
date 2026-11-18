@@ -6,13 +6,13 @@ export function DiscoverEmptyState({ onRestart }: { onRestart: () => void }) {
   return (
     <View style={styles.emptyState}>
       <Text style={styles.title}>今日の候補を見終わりました</Text>
-      <Text style={styles.description}>デモ用プロフィールは以上です。</Text>
+      <Text style={styles.description}>新しい相手が登録されるまで、しばらくお待ちください。</Text>
       <Pressable
         accessibilityRole="button"
         onPress={onRestart}
         style={({ pressed }) => [styles.restartButton, pressed && styles.pressed]}
       >
-        <Text style={styles.restartLabel}>最初から見る</Text>
+        <Text style={styles.restartLabel}>更新する</Text>
       </Pressable>
     </View>
   );

@@ -45,6 +45,88 @@ function fixture() {
     return { sqlite, env, objects, request, account, pair, pending, ctx };
 }
 const pngData = () => `data:image/png;base64,${Buffer.from(encodePng({ width: 100, height: 200, data: new Uint8Array(100 * 200 * 4).fill(200) })).toString('base64')}`;
+
+test('merge migration preserves existing preference filters and imports mobile settings and reads', () => {
+    const db = new DatabaseSync(':memory:');
+    try {
+        const files = readdirSync(new URL('../migrations/', import.meta.url)).filter(n => n.endsWith('.sql')).sort();
+        for (const file of files.filter(n => n !== '0005_mobile_compatibility.sql')) db.exec(readFileSync(new URL(`../migrations/${file}`, import.meta.url), 'utf8'));
+        const time = new Date().toISOString();
+        for (const user of ['a', 'b']) db.prepare('INSERT INTO users(id,google_sub,email,created_at,updated_at) VALUES(?,?,?,?,?)').run(user, user, `${user}@test.invalid`, time, time);
+        db.exec(`INSERT INTO discovery_preferences(user_id) VALUES('a');
+          INSERT INTO discovery_preferences(user_id,min_age,max_age,accepted_purposes) VALUES('b',26,45,'["serious"]');
+          INSERT INTO mobile_discovery_preferences(user_id,min_age,max_age,area) VALUES('a',25,40,'大阪'),('b',20,60,'東京');
+          INSERT INTO matches(id,user_low,user_high,created_at) VALUES('pair','a','b','${time}');
+          INSERT INTO message_reads(match_id,user_id,sequence,read_at) VALUES('pair','a',2,'${time}');
+          INSERT INTO mobile_message_reads(user_id,match_id,last_sequence) VALUES('a','pair',3);`);
+        db.exec(readFileSync(new URL('../migrations/0005_mobile_compatibility.sql', import.meta.url), 'utf8'));
+        const a = db.prepare("SELECT * FROM discovery_preferences WHERE user_id='a'").get()!;
+        const b = db.prepare("SELECT * FROM discovery_preferences WHERE user_id='b'").get()!;
+        assert.deepEqual([a.min_age, a.max_age, a.area], [25, 40, '大阪']);
+        assert.deepEqual([b.min_age, b.max_age, b.area, b.accepted_purposes], [26, 45, '東京', '["serious"]']);
+        assert.equal(db.prepare("SELECT sequence FROM message_reads WHERE user_id='a'").get()!.sequence, 3);
+    } finally { db.close(); }
+});
+
+test('mobile views retain main permissions, message contracts and pending-like filtering', async () => {
+    const f = fixture(), { a, b, matchId } = await f.pair(), outsider = await f.account();
+    const capture = await f.request('/api/captures', { method: 'POST', token: a.token, body: { dataUrl: pngData() } });
+    assert.equal(capture.status, 201);
+    const detail = await f.request(`/api/matches/${matchId}`, { token: b.token });
+    assert.equal(detail.status, 200);
+    assert.equal(detail.body.profile.user_id, a.id);
+    assert.equal(detail.body.progress.sharedAnswers, 0);
+    assert.deepEqual(detail.body.captures.map((c: any) => c.stage), [0]);
+    assert.equal((await f.request(`/api/matches/${matchId}`, { token: outsider.token })).status, 404);
+    assert.equal((await f.request('/api/likes/received?pendingOnly=true', { token: a.token })).body.likes.length, 0);
+    assert.equal((await f.request('/api/likes/received', { token: a.token })).body.likes.length, 1);
+    await f.request(`/api/matches/${matchId}/messages`, { token: a.token, method: 'POST', body: { body: '質問ですか？' } });
+    const page = await f.request(`/api/matches/${matchId}/messages`, { token: b.token });
+    assert.equal(page.body.me, b.id);
+    assert.deepEqual(page.body.messages, page.body.results);
+    const matches = await f.request('/api/matches', { token: b.token });
+    assert.equal(matches.body.matches[0].last_message, '質問ですか？');
+    assert.equal(matches.body.matches[0].user_id, a.id);
+    const limited = await f.request(`/admin/users/${a.id}/limits`, { key: f.env.ADMIN_SAFETY_KEY, method: 'POST', body: { scope: 'discovery', reason: 'test', expiresAt: new Date(Date.now() + 60000).toISOString() } });
+    assert.equal(limited.status, 201);
+    assert.equal((await f.request('/api/passes', { token: a.token, method: 'POST', body: { toUserId: outsider.id } })).status, 403);
+});
+
+test('mobile region PATCH preserves main preferences and reuse only shows undecided cards', async () => {
+    const f = fixture(), a = await f.account(), b = await f.account();
+    for (const user of [a, b]) await f.request('/api/profile', { token: user.token, method: 'PATCH', body: { display_name: 'test', birth_year: 1995, area: '東京', location_scope: 'area', purpose: 'serious' } });
+    await f.request('/api/preferences/discovery', { token: a.token, method: 'PUT', body: { acceptedPurposes: ['serious'], acceptedPaces: ['balanced'] } });
+    await f.request('/api/preferences/discovery', { token: a.token, method: 'PATCH', body: { minAge: 18, maxAge: 120, area: '東京' } });
+    const prefs = (await f.request('/api/preferences/discovery', { token: a.token })).body.preferences;
+    assert.deepEqual(prefs.acceptedPurposes, ['serious']);
+    assert.deepEqual(prefs.acceptedPaces, ['balanced']);
+    await f.request('/api/profile', { token: b.token, method: 'PATCH', body: { conversation_pace: 'balanced' } });
+    const path = '/api/discover?reuseUnswiped=true';
+    assert.equal((await f.request(path, { token: a.token })).body.candidates.length, 1);
+    assert.equal((await f.request(path, { token: a.token })).body.candidates.length, 1);
+    assert.equal((await f.request('/api/discover', { token: a.token })).body.candidates.length, 0);
+    await f.request('/api/passes', { token: a.token, method: 'POST', body: { toUserId: b.id } });
+    const empty = await f.request(path, { token: a.token });
+    assert.equal(empty.status, 200);
+    assert.deepEqual(empty.body.candidates, []);
+});
+
+test('cropped connect photos remain accessible with main permissions and delete as a group', async () => {
+    const f = fixture(), { a, b, matchId } = await f.pair();
+    for (let stage = 0; stage < 5; stage++) {
+        const key = `public/${a.id}/connect-group/${stage}`;
+        f.objects.set(key, new Uint8Array([1, 2, 3]));
+        f.sqlite.prepare('INSERT INTO captures(id,owner_id,stage,object_key,media_type,created_at) VALUES(?,?,?,?,?,?)').run(`connect-${stage}`, a.id, stage, key, 'image/jpeg', new Date().toISOString());
+    }
+    assert.equal((await f.request('/api/captures/connect-0/image', { token: b.token })).status, 200);
+    assert.equal((await f.request('/api/captures/connect-1/image', { token: b.token })).status, 403);
+    const detail = await f.request(`/api/matches/${matchId}`, { token: b.token });
+    assert.equal(detail.body.captures.length, 1);
+    assert.equal(detail.body.profile.capture_id, 'connect-0');
+    assert.equal((await f.request('/api/captures/connect-0', { token: a.token, method: 'DELETE' })).status, 200);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM captures WHERE owner_id=?').get(a.id)!.n, 0);
+    assert.equal(f.objects.size, 0);
+});
 test('registration has no verification gate and profile is compatible with mobile', async () => {
     const f = fixture(), a = await f.account();
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM age_verifications').get()!.n, 0);

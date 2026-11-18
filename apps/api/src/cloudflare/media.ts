@@ -94,7 +94,7 @@ export async function mayView(c: Ctx, capture: Row) {
     const me = c.get('userId');
     if (capture.owner_id === me)
         return;
-    if (!capture.original_key || await blocked(c.env, me, capture.owner_id))
+    if ((!capture.original_key && !String(capture.object_key).startsWith('public/')) || await blocked(c.env, me, capture.owner_id))
         fail(403, 'forbidden');
     const owner = await c.env.DB.prepare("SELECT 1 FROM users WHERE id=? AND status='active'").bind(capture.owner_id).first();
     if (!owner)
@@ -176,7 +176,8 @@ export function mediaRoutes(app: App) {
         const row = await c.env.DB.prepare('SELECT * FROM captures WHERE id=? AND owner_id=?').bind(c.req.param('id'), c.get('userId')).first<Row>();
         if (!row)
             return fail(404, 'not_found');
-        const siblings = row.original_key ? await c.env.DB.prepare('SELECT id,object_key FROM captures WHERE original_key=? AND owner_id=?').bind(row.original_key, c.get('userId')).all<Row>() : { results: [row] };
+        const siblings = row.original_key ? await c.env.DB.prepare('SELECT id,object_key FROM captures WHERE original_key=? AND owner_id=?').bind(row.original_key, c.get('userId')).all<Row>()
+            : /^public\/[^/]+\/[^/]+\/[0-4]$/.test(row.object_key) ? await c.env.DB.prepare('SELECT id,object_key FROM captures WHERE owner_id=? AND object_key IN (?,?,?,?,?)').bind(c.get('userId'), ...Array.from({ length: 5 }, (_, stage) => row.object_key.replace(/\/[0-4]$/, `/${stage}`))).all<Row>() : { results: [row] };
         await c.env.CAPTURES.delete([...siblings.results.map(r => r.object_key), ...(row.original_key ? [row.original_key] : [])]);
         await c.env.DB.batch(siblings.results.map(r => c.env.DB.prepare('DELETE FROM captures WHERE id=?').bind(r.id)));
         await audit(c.env, 'capture_deleted', c.get('userId'), row.id);

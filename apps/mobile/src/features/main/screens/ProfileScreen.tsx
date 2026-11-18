@@ -1,9 +1,10 @@
+import { ProfileSettings, type SettingKind } from '../components/ProfileSettings';
+import { ProtectedPhoto } from '../components/ProtectedPhoto';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,7 +13,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getApiBaseUrl } from '../../auth/api/client';
 import { useAuth } from '../../auth/context/AuthContext';
 import { colors, spacing } from '../../../theme/tokens';
 import { MainTabBar, type MainTabId } from '../components/MainTabBar';
@@ -21,7 +21,7 @@ import { ProfileSettingRow } from '../components/ProfileSettingRow';
 const settings = [
   { icon: 'profileEdit', label: 'プロフィール編集' },
   { icon: 'visibility', label: '公開範囲' },
-  { icon: 'calendar', label: '予定を信頼できる人へ共有' },
+  { icon: 'calendar', label: '待ち合わせ予定' },
   { icon: 'location', label: 'マッチング範囲' },
   { icon: 'report', label: '通報・ブロック' },
   { icon: 'data', label: 'データ管理・削除' },
@@ -35,14 +35,9 @@ function getThroatLabel(throatClass?: string) {
 }
 
 export default function ProfileScreen() {
-  const { profile, token, logOut } = useAuth();
+  const { profile, logOut } = useAuth();
+  const [setting, setSetting] = useState<SettingKind | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [photoFailed, setPhotoFailed] = useState(false);
-
-  useEffect(() => {
-    setPhotoFailed(false);
-  }, [profile?.profile_photo_capture_id]);
-
   const handleLogOut = async () => {
     if (isLoggingOut) return;
 
@@ -70,10 +65,6 @@ export default function ProfileScreen() {
     .filter(Boolean)
     .join('・');
   const photoCaptureId = profile?.profile_photo_capture_id;
-  const photoUri =
-    photoCaptureId && token
-      ? getApiBaseUrl() + '/api/captures/' + encodeURIComponent(photoCaptureId) + '/image'
-      : null;
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
@@ -88,18 +79,7 @@ export default function ProfileScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.profileCard}>
-            {photoUri && token && !photoFailed ? (
-              <Image
-                key={photoUri}
-                accessibilityLabel="自分のプロフィール写真"
-                source={{ uri: photoUri, headers: { Authorization: 'Bearer ' + token } }}
-                onError={() => setPhotoFailed(true)}
-                resizeMode="cover"
-                style={styles.photo}
-              />
-            ) : (
-              <View accessibilityLabel="プロフィール写真なし" style={styles.photoPlaceholder} />
-            )}
+            <View style={styles.photo}><ProtectedPhoto captureId={photoCaptureId} /></View>
             <View style={styles.profileInfo}>
               <Text numberOfLines={1} style={styles.name}>
                 {nameWithAge}
@@ -119,6 +99,7 @@ export default function ProfileScreen() {
                 key={setting.label}
                 icon={setting.icon}
                 label={setting.label}
+                onPress={() => { if (setting.icon === 'profileEdit') router.push('/sign-up'); else setSetting(setting.icon); }}
               />
             ))}
           </View>
@@ -145,6 +126,7 @@ export default function ProfileScreen() {
 
         <MainTabBar activeTab="profile" onTabPress={handleTabPress} />
       </View>
+      <ProfileSettings kind={setting} onClose={() => setSetting(null)} />
     </SafeAreaView>
   );
 }

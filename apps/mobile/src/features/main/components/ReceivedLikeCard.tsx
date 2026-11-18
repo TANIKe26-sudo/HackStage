@@ -1,7 +1,8 @@
+import { ProtectedPhoto } from './ProtectedPhoto';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing } from '../../../theme/tokens';
-import type { ReceivedLike } from '../data/demoReceivedLikes';
+import type { ProfileCard as ReceivedLike } from '../api/client';
 
 type ReceivedLikeCardProps = {
   profile: ReceivedLike;
@@ -13,12 +14,12 @@ export function ReceivedLikeCard({ profile, onMatch, onDecline }: ReceivedLikeCa
   return (
     <View style={styles.card}>
       <View style={styles.photoPlaceholder}>
-        <Text style={styles.noImage}>No image</Text>
+        <ProtectedPhoto captureId={profile.captureId} />
       </View>
 
       <View style={styles.profileInfo}>
         <Text numberOfLines={1} style={styles.name}>
-          {profile.name} ({profile.age})
+          {profile.name} {profile.age ? `(${profile.age})` : ''}
         </Text>
         <Text numberOfLines={1} style={styles.area}>
           {profile.goal}・{profile.area}

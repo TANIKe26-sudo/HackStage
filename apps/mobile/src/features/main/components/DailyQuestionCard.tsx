@@ -7,14 +7,18 @@ type DailyQuestionCardProps = {
   answer: string;
   onAnswerChange: (answer: string) => void;
   onSend: () => void;
+  disabled?: boolean;
+  submitted?: boolean;
 };
 
-export function DailyQuestionCard({ question, answer, onAnswerChange, onSend }: DailyQuestionCardProps) {
+export function DailyQuestionCard({ question, answer, onAnswerChange, onSend, disabled, submitted }: DailyQuestionCardProps) {
   return (
     <View style={styles.card}>
       <Text style={styles.question}>{question}</Text>
       <TextInput
         accessibilityLabel="今日のお題への回答"
+        maxLength={2000}
+        editable={!disabled}
         value={answer}
         onChangeText={onAnswerChange}
         onSubmitEditing={onSend}
@@ -26,10 +30,12 @@ export function DailyQuestionCard({ question, answer, onAnswerChange, onSend }: 
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="回答を送信"
+        disabled={disabled || !answer.trim()}
+        accessibilityState={{ disabled: disabled || !answer.trim() }}
         onPress={onSend}
         style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}
       >
-        <Text style={styles.sendButtonLabel}>送信</Text>
+        <Text style={styles.sendButtonLabel}>{submitted ? '回答を更新' : '送信'}</Text>
       </Pressable>
     </View>
   );

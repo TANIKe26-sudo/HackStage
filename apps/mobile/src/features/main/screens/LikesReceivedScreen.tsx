@@ -1,18 +1,36 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MainTabBar, type MainTabId } from '../components/MainTabBar';
 import { ReceivedLikeCard } from '../components/ReceivedLikeCard';
-import { demoReceivedLikes } from '../data/demoReceivedLikes';
+import { profileCard, useMainApi } from '../api/client';
+import { useResource } from '../api/useResource';
+import { RequestState } from '../components/RequestState';
 import { colors, spacing } from '../../../theme/tokens';
 
 export default function LikesReceivedScreen() {
-  const [receivedLikes, setReceivedLikes] = useState(demoReceivedLikes);
-
-  const removeLike = (profileId: string) => {
-    setReceivedLikes((currentLikes) => currentLikes.filter((profile) => profile.id !== profileId));
+  const api = useMainApi();
+  const resource = useResource(api.likes, 10000);
+  const [removed, setRemoved] = useState<string[]>([]);
+  const inFlight = useRef(false);
+  const receivedLikes = (resource.data?.likes ?? []).filter(p => !removed.includes(p.user_id)).map(profileCard);
+  const decide = async (profileId: string, accept: boolean) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      if (accept) {
+        const result = await api.like(profileId);
+        if (result.matched && result.matchId) {
+          router.push({ pathname: '/chat/[conversationId]', params: { conversationId: result.matchId } });
+        }
+      } else await api.pass(profileId);
+      setRemoved(current => [...current, profileId]);
+      void resource.refresh();
+    } catch (error) {
+      Alert.alert('送信できませんでした', error instanceof Error ? error.message : '再度お試しください。');
+    } finally { inFlight.current = false; }
   };
 
   const handleTabPress = (tab: MainTabId) => {
@@ -29,21 +47,23 @@ export default function LikesReceivedScreen() {
         </View>
 
         <ScrollView
+          refreshControl={<RefreshControl refreshing={resource.loading} onRefresh={() => void resource.refresh()} />}
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         >
+          <RequestState loading={resource.loading && !resource.data} error={resource.error} onRetry={() => void resource.refresh()} />
           {receivedLikes.length > 0 ? (
             receivedLikes.map((profile) => (
               <ReceivedLikeCard
                 key={profile.id}
                 profile={profile}
-                onMatch={() => removeLike(profile.id)}
-                onDecline={() => removeLike(profile.id)}
+                onMatch={() => void decide(profile.id, true)}
+                onDecline={() => void decide(profile.id, false)}
               />
             ))
           ) : (
-            <Text style={styles.emptyMessage}>届いたいいねはありません</Text>
+            !resource.loading && !resource.error ? <Text style={styles.emptyMessage}>届いたいいねはありません</Text> : null
           )}
         </ScrollView>
 

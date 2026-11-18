@@ -1,9 +1,15 @@
-import { Stack } from 'expo-router';
-import { Platform } from 'react-native';
+import { useAuth } from '../../features/auth/context/AuthContext';
+import { isProfileReady } from '../../features/auth/api/client';
+import { Redirect, Stack } from 'expo-router';
+import { ActivityIndicator, Platform, View } from 'react-native';
 
 import { colors } from '../../theme/tokens';
 
 export default function MainLayout() {
+  const { token, profile, isRestoring } = useAuth();
+  if (isRestoring) return <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>;
+  if (!token) return <Redirect href="/" />;
+  if (!isProfileReady(profile)) return <Redirect href="/sign-up" />;
   return (
     <Stack screenOptions={{ headerShown: false, animation: 'none' }}>
       <Stack.Screen
