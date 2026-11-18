@@ -1,5 +1,7 @@
 # 👔 喉仏マッチングアプリ
 
+撮影画像のAI推定：[喉仏の写り方のAPI・参考画像設定](docs/throat-classification.md)
+
 > フロントとCloudflare APIの接続・最新のローカル起動／2アカウント検証は[接続手順](docs/mobile-integration.md)を参照してください。Cloudflare版では本人確認の審査待ちは廃止しています。以下の企画仕様のうち本人確認の記載は旧方針です。
 
 ## 1. プロジェクト概要

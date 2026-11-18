@@ -8,6 +8,7 @@ apps/api/data/
 apps/api/private/
 apps/api/.dev.vars
 apps/api/.wrangler/
+apps/api/.wrangler-ai.generated.json
 backups/
 .env
 .env.*

@@ -1,9 +1,12 @@
+import { apiRequest } from '../api/client';
+import { classificationLabels, classificationReason, type ClassificationResult } from '../api/classification';
+import { useAuth } from '../context/AuthContext';
 import { captureRegions } from '../captureRegions';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CameraIcon } from '../components/CameraIcon';
@@ -14,14 +17,19 @@ const cameraPreviewColor = '#30282A';
 
 export default function InAppCameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
-  const [captured, setCaptured] = useState<{ uri: string; dataUrl: string; preview: string } | null>(null);
+  const [captured, setCaptured] = useState<{ uri: string; dataUrl: string; preview: string; previewDataUrl: string } | null>(null);
+  const { token } = useAuth();
+  const [classification, setClassification] = useState<ClassificationResult | null>(null);
+  const [classifying, setClassifying] = useState(false);
+  const classificationRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => classificationRequest.current?.abort(), []);
   const cameraRef = useRef<CameraView | null>(null);
   const hasRequestedPermission = useRef(false);
   const [isScreenFocused, setIsScreenFocused] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isTakingPicture, setIsTakingPicture] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { setProfilePhotoUri, setProfilePhotoDataUrl } = useSignUpDraft();
+  const { setProfilePhotoUri, setProfilePhotoDataUrl, setProfilePhotoClassification } = useSignUpDraft();
 
   useFocusEffect(
     useCallback(() => {
@@ -76,8 +84,10 @@ export default function InAppCameraScreen() {
       const crop = ImageManipulator.manipulate(full.uri);
       const region = captureRegions[0];
       crop.crop({ originX: Math.floor(full.width * region.x), originY: Math.floor(full.height * region.y), width: Math.max(1, Math.floor(full.width * region.width)), height: Math.max(1, Math.floor(full.height * region.height)) });
-      const preview = await (await crop.renderAsync()).saveAsync({ format: SaveFormat.JPEG, compress: 0.85 });
-      setCaptured({ uri: full.uri, dataUrl: `data:image/jpeg;base64,${full.base64}`, preview: preview.uri });
+      const preview = await (await crop.renderAsync()).saveAsync({ format: SaveFormat.JPEG, compress: 0.85, base64: true });
+      if (!preview.base64) throw new Error('公開画像を読み込めませんでした。');
+      setClassification(null);
+      setCaptured({ uri: full.uri, dataUrl: `data:image/jpeg;base64,${full.base64}`, preview: preview.uri, previewDataUrl: `data:image/jpeg;base64,${preview.base64}` });
       setIsTakingPicture(false);
     } catch {
       setErrorMessage('撮影に失敗しました。もう一度お試しください。');
@@ -94,19 +104,38 @@ export default function InAppCameraScreen() {
     }
   };
 
+  const classify = async () => {
+    if (!captured || !token || classificationRequest.current) return;
+    const controller = new AbortController(); classificationRequest.current = controller;
+    setClassifying(true); setErrorMessage(null); setClassification(null);
+    try {
+      const result = await apiRequest<ClassificationResult>('/api/classifications/throat', token, { method: 'POST', signal: controller.signal,
+        body: JSON.stringify({ dataUrl: captured.previewDataUrl, consent: true }) });
+      if (!controller.signal.aborted) setClassification(result);
+    } catch (error) {
+      if (!controller.signal.aborted) setErrorMessage(error instanceof Error ? error.message : '推定できませんでした。');
+    } finally { classificationRequest.current = null; if (!controller.signal.aborted) setClassifying(false); }
+  };
+
   if (captured) return <SafeAreaView style={styles.safeArea}>
-    <View style={[styles.content, { gap: 20 }]}>
+    <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: 14 }}>
       <Text style={styles.title}>初期公開する画像の確認</Text>
       <Text>この切り出し画像が相手に表示されます。首周りが写り、顔が含まれていないことを確認してください。自動検出ではありません。</Text>
       <Image source={{ uri: captured.preview }} resizeMode="contain" style={{ width: '100%', height: 180 }} />
-      <Pressable accessibilityRole="button" onPress={() => {
-        setCaptured(null); setIsCameraReady(false);
+      <Pressable accessibilityRole="button" disabled={classifying || !token} onPress={() => Alert.alert('AI推定への同意', '表示中の首周りの画像をCloudflareの画像認識AIへ送って推定します。結果は画像上の見え方の候補で、性別・本人確認には使いません。', [
+        { text: 'キャンセル', style: 'cancel' }, { text: '同意して推定する', onPress: () => void classify() },
+      ])} style={{ padding: 12 }}><Text style={{ color: colors.primary }}>{classifying ? '推定中…' : 'AIで喉仏の写り方を推定'}</Text></Pressable>
+      {classifying ? <ActivityIndicator color={colors.primary} /> : null}
+      {classification ? <View style={{ gap: 8 }}><Text style={{ color: colors.primary, fontWeight: '700' }}>推定：{classificationLabels[classification.classification]}</Text><Text>{classificationReason(classification.reason)}</Text></View> : null}
+      {errorMessage ? <Text accessibilityRole="alert">{errorMessage}</Text> : null}
+      <Pressable accessibilityRole="button" disabled={classifying} onPress={() => {
+        setCaptured(null); setClassification(null); setErrorMessage(null); setIsCameraReady(false);
       }} style={{ padding: 16 }}><Text>撮り直す</Text></Pressable>
-      <Pressable accessibilityRole="button" onPress={() => {
-        setProfilePhotoUri(captured.uri); setProfilePhotoDataUrl(captured.dataUrl);
+      <Pressable accessibilityRole="button" disabled={classifying} onPress={() => {
+        setProfilePhotoUri(captured.uri); setProfilePhotoDataUrl(captured.dataUrl); setProfilePhotoClassification(classification?.classification ?? 'pending');
         if (router.canGoBack()) router.back(); else router.replace('/sign-up');
-      }} style={{ padding: 16 }}><Text style={{ color: colors.primary }}>この画像で登録する</Text></Pressable>
-    </View>
+      }} style={{ padding: 16 }}><Text style={{ color: colors.primary }}>{classification ? '推定結果を確認してこの写真を使う' : '判定保留でこの写真を使う'}</Text></Pressable>
+    </ScrollView>
   </SafeAreaView>;
 
   return (

@@ -1,3 +1,6 @@
+import { parseClassification, referenceKeys } from '../src/cloudflare/classification.js';
+import { comparisonImage } from '../src/cloudflare/classification-image.js';
+import * as jpeg from 'jpeg-js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -333,11 +336,68 @@ test('classification needs consent and only returns a suggestion', async () => {
     const f = fixture(), a = await f.account();
     const uploaded = await f.request('/api/captures', { method: 'POST', token: a.token, body: { dataUrl: pngData() } });
     assert.equal((await f.request(`/api/captures/${uploaded.body.id}/classification`, { method: 'POST', token: a.token, body: { consent: false } })).status, 400);
+    for (const key of Object.values(referenceKeys)) f.objects.set(key, Buffer.from(pngData().split(',')[1], 'base64'));
     let sentImage: unknown;
-    f.env.AI = { run: async (_model, body) => { sentImage = body.image; return { response: '{"classification":"present"}' }; } };
+    f.env.AI = { run: async (_model, body) => { sentImage = body.image; return { response: '{"classification":"present","visibility":"clear","reason":"visible_prominence"}' }; } };
     const result = await f.request(`/api/captures/${uploaded.body.id}/classification`, { method: 'POST', token: a.token, body: { consent: true } });
     assert.equal(result.status, 200);
     assert.equal(result.body.classification, 'present');
     assert.ok(Array.isArray(sentImage));
     assert.equal((await f.request('/api/me', { token: a.token })).body.profile.throat_class, 'pending');
+});
+
+
+test('reference comparison orders panels and rejects unsafe model output', () => {
+    const png = (r: number, g: number, b: number) => {
+        const data = new Uint8Array(100 * 100 * 4);
+        for (let i = 0; i < data.length; i += 4) data.set([r, g, b, 255], i);
+        return encodePng({ width: 100, height: 100, data });
+    };
+    const sheet = jpeg.decode(comparisonImage(png(255, 0, 0), png(0, 255, 0), png(0, 0, 255)));
+    assert.equal(sheet.width, 1184);
+    const color = (x: number, channel: number) => sheet.data[(256 * sheet.width + x) * 4 + channel];
+    assert(color(192, 0) > 240 && color(592, 1) > 240 && color(992, 2) > 240);
+    assert.equal(parseClassification('{"classification":"absent","visibility":"clear","reason":"no_distinct_prominence"}').classification, 'absent');
+    for (const value of ['{"classification":"present"}', '{"classification":"present","visibility":"unclear","reason":"visible_prominence"}', 'present', '{"classification":"male"}', '[]']) {
+        assert.equal(parseClassification(value).classification, 'pending');
+    }
+});
+
+test('vision Markdown response is parsed without accepting incomplete or contradictory output', () => {
+    const response = '**Classification:** present\n\n**Visibility:** clear\n\n**Reason:** visible_prominence';
+    assert.deepEqual(parseClassification(response), { classification: 'present', reason: 'visible_prominence' });
+    assert.deepEqual(parseClassification(response.replace('present', 'absent').replace('visible_prominence', 'no_distinct_prominence')), { classification: 'absent', reason: 'no_distinct_prominence' });
+    assert.equal(parseClassification(response.replace('clear', 'unclear')).classification, 'pending');
+    for (const invalid of [response + '\nClassification: absent', response.replace('**Visibility:** clear', ''), response.replace('present', 'male')]) {
+        assert.equal(parseClassification(invalid).reason, 'invalid_model_response');
+    }
+});
+
+test('direct classification requires consent, configuration and references, and never saves a target', async () => {
+    const f = fixture(), user = await f.account(), path = '/api/classifications/throat';
+    assert.equal((await f.request(path, { method: 'POST', token: user.token, body: { dataUrl: pngData() } })).status, 400);
+    assert.equal((await f.request(path, { method: 'POST', token: user.token, body: { consent: true, dataUrl: pngData() } })).body.error, 'classification_service_not_configured');
+    let input: Record<string, unknown> | undefined;
+    f.env.AI = { run: async (_model, value) => { input = value; return { response: '{"classification":"absent","visibility":"clear","reason":"no_distinct_prominence"}' }; } };
+    assert.equal((await f.request(path, { method: 'POST', token: user.token, body: { consent: true, dataUrl: pngData() } })).body.error, 'classification_references_not_configured');
+    for (const key of Object.values(referenceKeys)) f.objects.set(key, Buffer.from(pngData().split(',')[1], 'base64'));
+    const result = await f.request(path, { method: 'POST', token: user.token, body: { consent: true, dataUrl: pngData() } });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.classification, 'absent');
+    assert.equal(result.body.requiresUserConfirmation, true);
+    assert.match(String(input!.prompt), /C \(right\): the ONLY target/);
+    assert.equal(jpeg.decode(Uint8Array.from(input!.image as number[])).width, 1184);
+    assert.equal(f.objects.size, 2);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM captures').get()!.n, 0);
+    assert.equal((await f.request('/api/me', { token: user.token })).body.profile.throat_class, 'pending');
+});
+
+test('classification provider failure is explicit and owner-only capture classification cannot be bypassed', async () => {
+    const f = fixture(), a = await f.account(), b = await f.account();
+    for (const key of Object.values(referenceKeys)) f.objects.set(key, Buffer.from(pngData().split(',')[1], 'base64'));
+    f.env.AI = { run: async () => { throw new Error('upstream failure'); } };
+    assert.equal((await f.request('/api/classifications/throat', { token: a.token, method: 'POST', body: { consent: true, dataUrl: pngData() } })).body.error, 'classification_service_unavailable');
+    const uploaded = await f.request('/api/captures', { token: a.token, method: 'POST', body: { dataUrl: pngData() } });
+    assert.equal((await f.request(`/api/captures/${uploaded.body.id}/classification`, { token: b.token, method: 'POST', body: { consent: true } })).status, 404);
+    assert.equal((await f.request('/api/classifications/throat', { token: a.token, method: 'POST', body: { consent: true, dataUrl: 'not-an-image' } })).status, 400);
 });

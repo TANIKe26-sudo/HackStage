@@ -20,7 +20,11 @@
     "restore:cloudflare": "node scripts/cloudflare-backup.mjs restore",
     "test:cloudflare": "node --import tsx --test tests/cloudflare.test.ts",
     "test:mobile-integration": "node scripts/test-mobile-integration.mjs",
-    "seed:daily:local": "node scripts/seed-daily-local.mjs"
+    "seed:daily:local": "node scripts/seed-daily-local.mjs",
+    "references:prepare": "node --import tsx scripts/prepare-throat-references.ts",
+    "references:local": "node scripts/upload-throat-references.mjs",
+    "dev:cloudflare:ai": "node scripts/dev-cloudflare-ai.mjs",
+    "classification:evaluate:local": "node scripts/evaluate-throat-local.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",
