@@ -14,7 +14,7 @@ import { colors, spacing } from '../../../theme/tokens';
 
 export default function SignUpScreen() {
   const { profilePhotoUri, profilePhotoDataUrl, setProfilePhotoDataUrl, profilePhotoClassification, setProfilePhotoClassification } = useSignUpDraft();
-  const { profile, token, saveProfile } = useAuth();
+  const { profile, token, saveProfile, logOut } = useAuth();
   const isEditingProfile = Boolean(profile?.birth_year);
   const [name, setName] = useState(profile?.display_name ?? '');
   const [age, setAge] = useState(
@@ -25,7 +25,16 @@ export default function SignUpScreen() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
 
-  const handleBack = () => {
+  const handleBack = async () => {
+    if (busy) return;
+    if (!isEditingProfile) {
+      setBusy(true);
+      // Registration creates a session before profile setup. Clear it so the
+      // login route does not immediately redirect back to this screen.
+      await logOut().catch(() => undefined);
+      router.replace('/');
+      return;
+    }
     if (router.canGoBack()) {
       router.back();
       return;
@@ -89,6 +98,7 @@ export default function SignUpScreen() {
           <Pressable
             accessibilityLabel="前の画面へ戻る"
             accessibilityRole="button"
+            disabled={busy}
             onPress={handleBack}
             style={[styles.backButton, isEditingProfile && styles.profileEditBackButton]}
           >

@@ -21,6 +21,8 @@ export class ApiError extends Error {
 }
 
 const errorMessages: Record<string, string> = {
+  invalid_or_expired_code: '確認コードが正しくないか、有効期限が切れています。コードを確認するか、再送信してください。',
+  mail_not_configured: 'メール送信がまだ設定されていません。運営にお問い合わせください。',
   classification_model_license_required: 'AIモデルの利用規約への同意がまだ必要です。運営側で設定してください。',
   classification_service_not_configured: 'AI推定がまだ設定されていません。判定保留で進むこともできます。',
   classification_references_not_configured: 'AI比較用の参考画像が未設定です。',
