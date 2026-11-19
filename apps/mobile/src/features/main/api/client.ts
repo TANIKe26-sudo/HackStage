@@ -29,6 +29,16 @@ export type Daily = {
 };
 export type MatchDaily = Daily & { tasks: Record<string, boolean>; otherAnswered: boolean; progress: Progress };
 export const timeLabel = (value: string) => new Date(value).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+export const isSameLocalDay = (left: Date, right: Date) =>
+  left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
+export function formatDateLabel(value: string, now = new Date()) {
+  const date = new Date(value);
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  return isSameLocalDay(date, yesterday) ? '昨日' : date.toLocaleDateString('ja-JP');
+}
+export function formatConversationTimestamp(value: string, now = new Date()) {
+  return isSameLocalDay(new Date(value), now) ? timeLabel(value) : formatDateLabel(value, now);
+}
 export function profileCard(p: PublicProfile): ProfileCard {
   return { id: p.user_id, captureId: p.capture_id ?? p.initial_capture_id, name: p.display_name, age: p.birth_year ? new Date().getFullYear() - p.birth_year : null,
     area: p.area || '地域非公開', goal: p.purpose || '目的未登録',

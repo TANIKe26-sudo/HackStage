@@ -123,7 +123,9 @@ export default function EmailAuthScreen({ mode }: EmailAuthScreenProps) {
 
         {!isSignup ? (
           <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.push('/reset-password')} style={styles.switchButton}>
-            <Text style={styles.switchText}>パスワードを忘れた方</Text>
+            <Text style={styles.switchText}>
+              パスワードを忘れた方は<Text style={styles.switchLinkText}>こちら</Text>
+            </Text>
           </Pressable>
         ) : null}
 
@@ -131,7 +133,7 @@ export default function EmailAuthScreen({ mode }: EmailAuthScreenProps) {
           accessibilityRole="button"
           disabled={busy}
           onPress={() => router.replace(isSignup ? '/' : '/create-account')}
-          style={styles.switchButton}
+          style={[styles.switchButton, !isSignup && styles.loginSignupSwitchButton]}
         >
           <Text style={styles.switchText}>
             {isSignup ? 'すでにアカウントをお持ちの方は' : 'アカウントをお持ちでない方は'}
@@ -203,6 +205,9 @@ const styles = StyleSheet.create({
   switchButton: {
     alignItems: 'center',
     paddingVertical: spacing.md,
+  },
+  loginSignupSwitchButton: {
+    paddingTop: spacing.xs,
   },
   switchText: {
     color: colors.primary,

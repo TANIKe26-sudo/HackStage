@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../auth/context/AuthContext';
 import { colors, spacing } from '../../../theme/tokens';
 import { TodayTopicCard } from '../components/TodayTopicCard';
-import { useMainApi, timeLabel, type Message } from '../api/client';
+import { formatDateLabel, isSameLocalDay, timeLabel, useMainApi, type Message } from '../api/client';
 import { useResource } from '../api/useResource';
 import { ProtectedPhoto } from '../components/ProtectedPhoto';
 import { RequestState } from '../components/RequestState';
@@ -151,8 +151,9 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
           <RequestState loading={false} error={olderError || undefined} onRetry={() => void loadOlder()} />
           {messages.map((message, index) => {
             const isMine = message.sender_id === resource.data?.page.me;
-            const date = new Date(message.created_at).toLocaleDateString('ja-JP');
-            const showDate = index === 0 || date !== new Date(messages[index - 1].created_at).toLocaleDateString('ja-JP');
+            const date = formatDateLabel(message.created_at);
+            const previousDate = index > 0 ? new Date(messages[index - 1].created_at) : null;
+            const showDate = !previousDate || !isSameLocalDay(new Date(message.created_at), previousDate);
             return (
               <View key={message.id}>
                 {showDate ? <View style={styles.datePill}><Text style={styles.dateLabel}>{date}</Text></View> : null}

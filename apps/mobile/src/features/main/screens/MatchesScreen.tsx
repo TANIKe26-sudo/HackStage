@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing } from '../../../theme/tokens';
 import { ConversationCard } from '../components/ConversationCard';
 import { MainTabBar, type MainTabId } from '../components/MainTabBar';
-import { timeLabel, useMainApi } from '../api/client';
+import { formatConversationTimestamp, useMainApi } from '../api/client';
 import { useResource } from '../api/useResource';
 import { RequestState } from '../components/RequestState';
 
@@ -19,8 +19,7 @@ export default function MatchesScreen() {
   const conversations = useMemo(() => {
     const rows = (resource.data?.matches ?? []).map(m => ({
       id: m.id, captureId: m.capture_id, name: m.display_name, lastMessage: m.last_message ?? 'マッチしました。会話を始めましょう。',
-      updatedAt: new Date(m.updated_at).toLocaleDateString() === new Date().toLocaleDateString()
-        ? timeLabel(m.updated_at) : new Date(m.updated_at).toLocaleDateString('ja-JP'), hasUnread: m.unread_count > 0,
+      updatedAt: formatConversationTimestamp(m.updated_at), hasUnread: m.unread_count > 0,
     }));
     const normalizedSearch = searchText.trim().toLowerCase();
     if (!normalizedSearch) return rows;
