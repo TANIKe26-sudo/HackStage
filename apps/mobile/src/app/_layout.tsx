@@ -16,6 +16,8 @@ export default function RootLayout() {
           <Stack
             screenOptions={{
               headerShown: false,
+              fullScreenGestureEnabled: false,
+              gestureResponseDistance: { start: 24 },
               contentStyle: { backgroundColor: colors.background },
             }}
           />

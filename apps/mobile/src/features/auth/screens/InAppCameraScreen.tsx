@@ -125,7 +125,7 @@ export default function InAppCameraScreen() {
       <Pressable accessibilityRole="button" disabled={classifying || !token} onPress={() => Alert.alert('AI推定への同意', '表示中の首周りの画像をCloudflareの画像認識AIへ送って推定します。結果は画像上の見え方の候補で、性別・本人確認には使いません。', [
         { text: 'キャンセル', style: 'cancel' }, { text: '同意して推定する', onPress: () => void classify() },
       ])} style={{ padding: 12 }}><Text style={{ color: colors.primary }}>{classifying ? '推定中…' : 'AIで喉仏の写り方を推定'}</Text></Pressable>
-      {classifying ? <ActivityIndicator color={colors.primary} /> : null}
+      {classifying ? <ActivityIndicator color={colors.mutedText} /> : null}
       {classification ? <View style={{ gap: 8 }}><Text style={{ color: colors.primary, fontWeight: '700' }}>推定：{classificationLabels[classification.classification]}</Text><Text>{classificationReason(classification.reason)}</Text></View> : null}
       {errorMessage ? <Text accessibilityRole="alert">{errorMessage}</Text> : null}
       <Pressable accessibilityRole="button" disabled={classifying} onPress={() => {
@@ -171,14 +171,14 @@ export default function InAppCameraScreen() {
               </View>
               {!isCameraReady ? (
                 <View style={styles.cameraLoading}>
-                  <ActivityIndicator color={colors.surface} />
+                  <ActivityIndicator color={colors.mutedText} />
                   <Text style={styles.cameraLoadingText}>カメラを準備しています</Text>
                 </View>
               ) : null}
             </>
           ) : permission?.granted ? (
             <View style={styles.permissionContent}>
-              <ActivityIndicator color={colors.surface} />
+              <ActivityIndicator color={colors.mutedText} />
               <Text style={styles.permissionText}>カメラを準備しています</Text>
             </View>
           ) : (
@@ -218,7 +218,7 @@ export default function InAppCameraScreen() {
           ]}
         >
           {isTakingPicture ? (
-            <ActivityIndicator color={colors.primary} />
+            <ActivityIndicator color={colors.mutedText} />
           ) : (
             <CameraIcon size={30} color={colors.primary} />
           )}

@@ -1,7 +1,7 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '../../../theme/tokens';
@@ -12,6 +12,7 @@ import { dailyTopicTasks } from '../data/dailyTopics';
 import { useMainApi } from '../api/client';
 import { useResource } from '../api/useResource';
 import { RequestState } from '../components/RequestState';
+import { KeyboardAwareScrollView } from '../../../components/KeyboardAwareScrollView';
 
 export default function DailyTopicScreen() {
   const { conversationId, previousStage } = useLocalSearchParams<{ conversationId: string; previousStage?: string }>();
@@ -66,7 +67,7 @@ function ConnectedDaily({ conversationId, previousStage }: { conversationId: str
           <Text style={styles.headerTitle}>今日のお題</Text>
         </View>
 
-        <ScrollView
+        <KeyboardAwareScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -119,7 +120,7 @@ function ConnectedDaily({ conversationId, previousStage }: { conversationId: str
               }
             />
           ) : null}
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
       </View>
     </SafeAreaView>

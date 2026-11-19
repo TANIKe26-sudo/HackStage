@@ -2,8 +2,10 @@ import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -42,6 +44,12 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
   const [olderError, setOlderError] = useState('');
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [showSafetyMenu, setShowSafetyMenu] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [reportReason, setReportReason] = useState('');
+  const [safetyActionBusy, setSafetyActionBusy] = useState(false);
+  const [safetyActionType, setSafetyActionType] = useState<'report' | 'block' | null>(null);
+  const canSubmitReport = !!reportReason.trim() && !safetyActionBusy;
   const sendingRef = useRef(false);
   const messageList = useRef<ScrollViewInstance | null>(null);
   const messages = Array.from(new Map([...(older?.messages ?? []), ...(resource.data?.page.messages ?? [])].map(m => [m.id, m])).values()).sort((a, b) => a.sequence - b.sequence);
@@ -76,14 +84,62 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
     } finally { sendingRef.current = false; setSending(false); }
   };
 
+  const submitReport = async () => {
+    const details = reportReason.trim();
+    if (!conversation || !details || safetyActionBusy) return;
+    setSafetyActionBusy(true);
+    setSafetyActionType('report');
+    try {
+      await api.reportUser(conversation.user_id, details);
+      setShowReportDialog(false);
+      setReportReason('');
+      Alert.alert('通報を受け付けました', 'ご報告ありがとうございます。');
+    } catch (error) {
+      Alert.alert('通報できませんでした', error instanceof Error ? error.message : '再度お試しください。');
+    } finally {
+      setSafetyActionBusy(false);
+      setSafetyActionType(null);
+    }
+  };
+
+  const blockConversationUser = async () => {
+    if (!conversation || safetyActionBusy) return;
+    setSafetyActionBusy(true);
+    setSafetyActionType('block');
+    try {
+      await api.blockUser(conversation.user_id);
+      router.back();
+    } catch (error) {
+      Alert.alert('ブロックできませんでした', error instanceof Error ? error.message : '再度お試しください。');
+    } finally {
+      setSafetyActionBusy(false);
+      setSafetyActionType(null);
+    }
+  };
+
+  const confirmBlock = () => {
+    if (!conversation || safetyActionBusy) return;
+    Alert.alert(`${conversation.display_name}をブロックしますか？`, 'ブロックするとマッチが解除され、会話できなくなります。', [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: 'はい', style: 'destructive', onPress: () => void blockConversationUser() },
+    ]);
+  };
+
+  const openSafetyMenu = () => {
+    if (!conversation || safetyActionBusy) return;
+    setShowSafetyMenu(current => !current);
+  };
+
   if (!conversation) {
     return (
       <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
-        <View style={styles.notFound}>
-          <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.backButton}>
+        <View style={styles.loadingScreen}>
+          <Pressable accessibilityRole="button" accessibilityLabel="トーク一覧に戻る" onPress={() => router.back()} style={styles.loadingBackButton}>
             <Ionicons name="chevron-back" size={24} color={colors.mutedText} />
           </Pressable>
-          <RequestState loading={resource.loading} error={resource.error} onRetry={() => void resource.refresh()} />
+          <View style={styles.loadingCenter}>
+            {resource.loading ? <ActivityIndicator size="small" color={colors.mutedText} /> : <RequestState loading={false} error={resource.error ?? 'このトークを表示できませんでした。'} onRetry={() => void resource.refresh()} />}
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -94,6 +150,7 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
     <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        enabled={!showReportDialog}
         style={styles.screen}
       >
         <View style={styles.header}>
@@ -124,8 +181,54 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
               {conversation.display_name}
             </Text>
           </Pressable>
-          <View style={styles.headerSpacer} />
+          {safetyActionBusy ? (
+            <Text accessibilityRole="text" style={styles.safetyActionStatus}>
+              {safetyActionType === 'block' ? 'ブロック中…' : '通報中…'}
+            </Text>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="通報・ブロック"
+              onPress={openSafetyMenu}
+              style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}
+            >
+              <Ionicons name="menu-outline" size={25} color={colors.mutedText} />
+            </Pressable>
+          )}
         </View>
+
+        {showSafetyMenu ? (
+          <View style={styles.safetyMenuLayer}>
+            <Pressable
+              accessibilityLabel="メニューを閉じる"
+              onPress={() => setShowSafetyMenu(false)}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.safetyMenu}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setShowSafetyMenu(false);
+                  setShowReportDialog(true);
+                }}
+                style={({ pressed }) => [styles.safetyMenuItem, pressed && styles.pressed]}
+              >
+                <Text style={styles.safetyMenuText}>通報</Text>
+              </Pressable>
+              <View style={styles.safetyMenuDivider} />
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setShowSafetyMenu(false);
+                  confirmBlock();
+                }}
+                style={({ pressed }) => [styles.safetyMenuItem, pressed && styles.pressed]}
+              >
+                <Text style={styles.safetyMenuBlockText}>ブロック</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
 
         <RequestState loading={false} error={resource.error} onRetry={() => void resource.refresh()} />
         <TodayTopicCard
@@ -206,14 +309,65 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
             onPress={() => void sendMessage()}
             style={({ pressed }) => [
               styles.sendButton,
-              !draft.trim() && styles.sendButtonDisabled,
+              (sending || !draft.trim()) && styles.sendButtonDisabled,
               pressed && styles.sendButtonPressed,
             ]}
           >
-            <Ionicons name="send" size={18} color={colors.white} />
+            <Ionicons name="send" size={18} color={sending || !draft.trim() ? colors.primary : colors.white} />
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+      <Modal
+        visible={showReportDialog}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowReportDialog(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.dialogBackdrop}
+        >
+          <Pressable
+            accessibilityLabel="通報画面を閉じる"
+            onPress={() => setShowReportDialog(false)}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.reportDialog}>
+            <Text style={styles.dialogTitle}>{conversation.display_name}を通報</Text>
+            <TextInput
+              accessibilityLabel="通報理由"
+              value={reportReason}
+              onChangeText={setReportReason}
+              multiline
+              maxLength={1000}
+              editable={!safetyActionBusy}
+              placeholder="通報理由を入力してください。"
+              placeholderTextColor={colors.mutedText}
+              textAlignVertical="top"
+              style={styles.reportInput}
+            />
+            <View style={styles.dialogActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={safetyActionBusy}
+                onPress={() => setShowReportDialog(false)}
+                style={({ pressed }) => [styles.dialogButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.dialogCancelText}>キャンセル</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ disabled: safetyActionBusy || !reportReason.trim() }}
+                disabled={safetyActionBusy || !reportReason.trim()}
+                onPress={() => void submitReport()}
+                style={({ pressed }) => [styles.dialogButton, canSubmitReport && styles.dialogPrimaryButton, !canSubmitReport && styles.dialogButtonDisabled, pressed && styles.pressed]}
+              >
+                <Text style={[styles.dialogPrimaryText, !canSubmitReport && styles.dialogSubmitDisabledText]}>{safetyActionBusy ? '通報中…' : '通報'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -226,6 +380,7 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
+    position: 'relative',
   },
   header: {
     height: 58,
@@ -249,6 +404,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 19,
+    overflow: 'hidden',
     backgroundColor: '#F2E5D8',
   },
   avatarLabel: {
@@ -264,8 +420,52 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
-  headerSpacer: {
-    width: 12,
+  menuButton: {
+    width: 36,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  safetyActionStatus: { color: colors.mutedText, fontSize: 12, fontWeight: '600' },
+  safetyMenuLayer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 10,
+    elevation: 10,
+  },
+  safetyMenu: {
+    position: 'absolute',
+    top: 64,
+    right: spacing.md,
+    width: 144,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    paddingVertical: 4,
+    shadowColor: '#382A2C',
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  safetyMenuItem: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  safetyMenuText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  safetyMenuBlockText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  safetyMenuDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
   },
   messageList: {
     flex: 1,
@@ -305,6 +505,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 14,
+    overflow: 'hidden',
     backgroundColor: '#F2E5D8',
     marginBottom: 15,
   },
@@ -387,23 +588,87 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   sendButtonDisabled: {
-    backgroundColor: '#C9B5B5',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    opacity: 0.4,
   },
   sendButtonPressed: {
     opacity: 0.75,
   },
-  notFound: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+  loadingScreen: { flex: 1, backgroundColor: colors.surface },
+  loadingBackButton: { position: 'absolute', zIndex: 1, top: spacing.sm, left: spacing.md, width: 36, height: 42, alignItems: 'flex-start', justifyContent: 'center' },
+  loadingCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  pressed: {
+    opacity: 0.7,
   },
-  notFoundText: {
+  dialogBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+    backgroundColor: 'rgba(0, 0, 0, 0.38)',
+  },
+  reportDialog: {
+    width: '100%',
+    maxWidth: 420,
+    gap: spacing.md,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+  },
+  dialogTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  dialogDescription: {
     color: colors.mutedText,
     fontSize: 14,
   },
-  pressed: {
-    opacity: 0.7,
+  reportInput: {
+    minHeight: 120,
+    maxHeight: 220,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: colors.background,
+    color: colors.text,
+    padding: spacing.md,
+    fontSize: 14,
+  },
+  dialogActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  dialogButton: {
+    minHeight: 44,
+    minWidth: 92,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  dialogPrimaryButton: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  dialogButtonDisabled: {
+    opacity: 0.4,
+  },
+  dialogCancelText: {
+    color: colors.mutedText,
+    fontWeight: '600',
+  },
+  dialogPrimaryText: {
+    color: colors.white,
+    fontWeight: '700',
+  },
+  dialogSubmitDisabledText: {
+    color: colors.primary,
   },
 });

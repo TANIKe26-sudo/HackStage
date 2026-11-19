@@ -63,6 +63,8 @@ export function useMainApi() {
       messages: (id: string, signal?: AbortSignal, before?: number) => get<MessagePage>(`/api/matches/${encodeURIComponent(id)}/messages${before ? `?before=${before}` : ''}`, signal),
       send: (id: string, body: string) => post<{ id: string; warning: string | null }>(`/api/matches/${encodeURIComponent(id)}/messages`, { body }),
       read: (id: string, sequence: number) => post(`/api/matches/${encodeURIComponent(id)}/read`, { sequence }),
+      reportUser: (subjectId: string, details: string) => post('/api/reports', { subjectId, category: 'other', details }),
+      blockUser: (userId: string) => post('/api/blocks', { userId }),
       daily: (signal?: AbortSignal) => get<Daily>('/api/daily', signal),
       matchDaily: (id: string, signal?: AbortSignal) => get<MatchDaily>(`/api/matches/${encodeURIComponent(id)}/daily`, signal),
       answer: (topicId: string, answer: string) => post('/api/daily/answers', { topicId, answer }),

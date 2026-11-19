@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing } from '../../../theme/tokens';
+import { KeyboardAwareTextInput } from '../../../components/KeyboardAwareScrollView';
 
 type DailyQuestionCardProps = {
   question: string;
@@ -15,7 +16,7 @@ export function DailyQuestionCard({ question, answer, onAnswerChange, onSend, di
   return (
     <View style={styles.card}>
       <Text style={styles.question}>{question}</Text>
-      <TextInput
+      <KeyboardAwareTextInput
         accessibilityLabel="今日のお題への回答"
         maxLength={2000}
         editable={!disabled}

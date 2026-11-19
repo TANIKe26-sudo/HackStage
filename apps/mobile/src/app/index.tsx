@@ -14,7 +14,7 @@ export default function IndexRoute() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.loading}>
-          <ActivityIndicator color={colors.primary} />
+          <ActivityIndicator color={colors.mutedText} />
         </View>
       </SafeAreaView>
     );

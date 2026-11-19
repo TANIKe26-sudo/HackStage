@@ -124,7 +124,7 @@ export default function ProfileScreen() {
             style={({ pressed }) => [styles.logoutButton, pressed && styles.pressed]}
           >
             {isLoggingOut ? (
-              <ActivityIndicator color={colors.primary} />
+              <ActivityIndicator color={colors.mutedText} />
             ) : (
               <Text style={styles.logoutLabel}>ログアウト</Text>
             )}
@@ -180,6 +180,7 @@ const styles = StyleSheet.create({
     width: 68,
     height: 82,
     borderRadius: 8,
+    overflow: 'hidden',
     backgroundColor: colors.background,
   },
   photoPlaceholder: {

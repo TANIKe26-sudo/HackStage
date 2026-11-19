@@ -1,6 +1,7 @@
-import { StyleSheet, Text, TextInput, View, type KeyboardTypeOptions } from 'react-native';
+import { StyleSheet, Text, View, type KeyboardTypeOptions } from 'react-native';
 
 import { colors, spacing } from '../../../theme/tokens';
+import { KeyboardAwareTextInput } from '../../../components/KeyboardAwareScrollView';
 
 type FormFieldProps = {
   label: string;
@@ -26,7 +27,7 @@ export function FormField({
   return (
     <View style={styles.container}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput
+      <KeyboardAwareTextInput
         accessibilityLabel={label}
         autoCapitalize={autoCapitalize}
         keyboardType={keyboardType}
