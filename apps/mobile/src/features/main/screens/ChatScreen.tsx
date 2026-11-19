@@ -134,7 +134,7 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
           onAnswer={() =>
             router.push({
               pathname: '/daily-topic/[conversationId]',
-              params: { conversationId },
+              params: { conversationId, previousStage: String(resource.data?.match.progress.stage ?? 0) },
             })
           }
         />

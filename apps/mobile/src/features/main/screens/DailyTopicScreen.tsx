@@ -14,11 +14,11 @@ import { useResource } from '../api/useResource';
 import { RequestState } from '../components/RequestState';
 
 export default function DailyTopicScreen() {
-  const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
-  return <ConnectedDaily key={conversationId} conversationId={conversationId} />;
+  const { conversationId, previousStage } = useLocalSearchParams<{ conversationId: string; previousStage?: string }>();
+  return <ConnectedDaily key={`${conversationId}:${previousStage ?? ''}`} conversationId={conversationId} previousStage={previousStage} />;
 }
 
-function ConnectedDaily({ conversationId }: { conversationId: string }) {
+function ConnectedDaily({ conversationId, previousStage }: { conversationId: string; previousStage?: string }) {
   const api = useMainApi();
   const load = useCallback((signal: AbortSignal) => api.matchDaily(conversationId, signal), [api, conversationId]);
   const resource = useResource(load, 5000);
@@ -29,6 +29,10 @@ function ConnectedDaily({ conversationId }: { conversationId: string }) {
   const completedTasks = dailyTopicTasks.filter(task => resource.data?.tasks[task.id]).map(task => task.id);
   const allTasksComplete = completedTasks.length === dailyTopicTasks.length;
   const progress = completedTasks.length / dailyTopicTasks.length;
+  const parsedPreviousStage = previousStage === undefined ? Number.NaN : Number(previousStage);
+  const intimacyIncreased = Number.isInteger(parsedPreviousStage)
+    && parsedPreviousStage >= 0
+    && (resource.data?.progress.stage ?? parsedPreviousStage) > parsedPreviousStage;
   const topic = resource.data?.topic;
   const handleSendAnswer = async () => {
     if (!topic || !answer.trim() || sendingRef.current) return;
@@ -106,6 +110,7 @@ function ConnectedDaily({ conversationId }: { conversationId: string }) {
 
           {allTasksComplete ? (
             <IntimacyUnlockedCard
+              intimacyIncreased={intimacyIncreased}
               onViewProfile={() =>
                 router.replace({
                   pathname: '/partner-profile/[conversationId]',
