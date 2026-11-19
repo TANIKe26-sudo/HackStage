@@ -10,6 +10,7 @@ import { encode as encodePng } from 'fast-png';
 import { app, maintenance } from '../src/cloudflare.js';
 import { dispatchPush } from '../src/cloudflare/communication.js';
 import type { Env } from '../src/cloudflare/core.js';
+import { dispatchAccountDeletions } from '../src/cloudflare/appwrite.js';
 function fixture() {
     const sqlite = new DatabaseSync(':memory:');
     sqlite.exec('PRAGMA foreign_keys=ON');
@@ -28,7 +29,7 @@ function fixture() {
                 sqlite.exec('ROLLBACK');
                 throw e;
             } } },
-        SESSION_SECRET: 's'.repeat(40), CONTACT_HASH_KEY: 'c'.repeat(40), DATE_LOCATION_KEY: Buffer.alloc(32, 7).toString('base64'), ADMIN_AUDIT_KEY: 'a'.repeat(40), ADMIN_SAFETY_KEY: 'b'.repeat(40), ADMIN_CONTENT_KEY: 'd'.repeat(40), ADMIN_USERS_KEY: 'u'.repeat(40), MAIL_MODE: 'local' } as unknown as Env;
+        AUTH_PROVIDER: 'local', SESSION_SECRET: 's'.repeat(40), CONTACT_HASH_KEY: 'c'.repeat(40), DATE_LOCATION_KEY: Buffer.alloc(32, 7).toString('base64'), ADMIN_AUDIT_KEY: 'a'.repeat(40), ADMIN_SAFETY_KEY: 'b'.repeat(40), ADMIN_CONTENT_KEY: 'd'.repeat(40), ADMIN_USERS_KEY: 'u'.repeat(40), MAIL_MODE: 'local' } as unknown as Env;
     const pending: Promise<unknown>[] = [];
     const ctx = { waitUntil: (p: Promise<unknown>) => pending.push(p), passThroughOnException: () => { } } as any;
     let counter = 0;
@@ -56,6 +57,143 @@ function fixture() {
     return { sqlite, env, objects, request, account, photo, pair, pending, ctx };
 }
 const pngData = () => `data:image/png;base64,${Buffer.from(encodePng({ width: 100, height: 200, data: new Uint8Array(100 * 200 * 4).fill(200) })).toString('base64')}`;
+
+function providerMock(f: ReturnType<typeof fixture>, t: { after: (fn: () => void) => void }) {
+    Object.assign(f.env, { AUTH_PROVIDER: 'appwrite', APPWRITE_ENDPOINT: 'https://sgp.cloud.appwrite.io/v1', APPWRITE_PROJECT_ID: 'test-project', APPWRITE_API_KEY: 'server-only-test-key' });
+    const users = new Map<string, any>(), sessions = new Map<string, string>();
+    const oldFetch = globalThis.fetch;
+    t.after(() => { globalThis.fetch = oldFetch; });
+    let serial = 0, failDeletion = false;
+    globalThis.fetch = async (url, init) => {
+        const path = new URL(String(url)).pathname.replace(/^\/v1/, ''), method = init?.method ?? 'GET', headers = new Headers(init?.headers);
+        const body = init?.body ? JSON.parse(String(init.body)) : {};
+        const secret = headers.get('X-Appwrite-Session'), key = headers.get('X-Appwrite-Key');
+        assert.equal(Boolean(secret && key), false, 'Session requests must never inherit admin access');
+        const current = secret ? users.get(sessions.get(secret) ?? '') : undefined;
+        const error = (type: string, status = 400) => Response.json({ type, message: 'provider-private-message' }, { status });
+        if (path === '/account' && method === 'POST') {
+            if ([...users.values()].some(u => u.email === body.email)) return error('user_already_exists', 409);
+            const user = { $id: body.userId, email: body.email, password: body.password, emailVerification: false, status: true };
+            users.set(user.$id, user); return Response.json(user, { status: 201 });
+        }
+        if (path === '/account/sessions/email') {
+            assert.equal(key, 'server-only-test-key');
+            const user = [...users.values()].find(u => u.email === body.email && u.password === body.password);
+            if (!user) return error('user_invalid_credentials', 401);
+            const sessionSecret = `private-provider-session-${++serial}`;
+            sessions.set(sessionSecret, user.$id);
+            return Response.json({ $id: String(serial), userId: user.$id, secret: sessionSecret, expire: new Date(Date.now() + 86400000).toISOString() });
+        }
+        if (path === '/account/recovery/otp') {
+            if (method === 'POST') {
+                const user = [...users.values()].find(u => u.email === body.email);
+                if (user) user.resetUsed = false;
+                return Response.json({ userId: user?.$id ?? crypto.randomUUID(), secret: 'private-recovery-secret' });
+            }
+            const user = users.get(body.userId);
+            if (!user || body.secret !== '654321' || user.resetUsed) return error('user_invalid_token');
+            user.password = body.password; user.resetUsed = true; return Response.json({});
+        }
+        if (path.startsWith('/users/')) {
+            assert.equal(key, 'server-only-test-key');
+            const uid = path.split('/')[2], user = users.get(uid);
+            if (!user) return error('user_not_found', 404);
+            if (method === 'GET') return Response.json(user);
+            if (method === 'DELETE') {
+                if (path.endsWith('/sessions')) { for (const [s, u] of sessions) if (u === uid) sessions.delete(s); }
+                else { if (failDeletion) throw new Error('simulated offline'); users.delete(uid); }
+                return new Response(null, { status: 204 });
+            }
+        }
+        if (!current) return error('user_unauthorized', 401);
+        if (path === '/account' && method === 'GET') return Response.json(current);
+        if (path === '/account/verifications/email/otp') {
+            if (method === 'POST') return Response.json({ userId: current.$id, secret: 'private-verification-secret' });
+            if (body.userId !== current.$id || body.secret !== '123456' || current.emailVerification) return error('user_invalid_token');
+            current.emailVerification = true; return Response.json({ userId: current.$id });
+        }
+        if (path === '/account/password') {
+            if (body.oldPassword !== current.password) return error('user_invalid_credentials', 401);
+            current.password = body.password; return Response.json(current);
+        }
+        if (path === '/account/sessions/current' && method === 'DELETE') { sessions.delete(secret!); return new Response(null, { status: 204 }); }
+        throw new Error(`Unexpected mock API: ${method} ${path}`);
+    };
+    return { users, sessions, setFailDeletion: (value: boolean) => { failDeletion = value; } };
+}
+
+test('Appwrite email verification gates API use and never returns provider secrets', async t => {
+    const f = fixture(), provider = providerMock(f, t);
+    const signup = await f.request('/auth/signup', { method: 'POST', body: { email: 'verified@example.test', password: '123456789' } });
+    assert.equal(signup.status, 201);
+    assert.equal(signup.body.verificationSent, true);
+    assert.equal(JSON.stringify(signup.body).includes('private-'), false);
+    const token = signup.body.token;
+    assert.equal((await f.request('/api/me', { token })).body.profile.email_verification_required, true);
+    f.sqlite.prepare('UPDATE users SET email_verified=1').run();
+    for (const path of ['/api/discover', '/api/likes', '/api/daily', '/api/captures', '/api/profile', '/api/matches/fake/messages']) {
+        const result = await f.request(path, { token, method: path === '/api/discover' || path === '/api/daily' ? 'GET' : path === '/api/profile' ? 'PATCH' : 'POST' });
+        assert.equal(result.body.error, 'email_verification_required');
+    }
+    const resend = await f.request('/api/email/verification', { token, method: 'POST', body: {} });
+    assert.equal(resend.status, 200); assert.equal(JSON.stringify(resend.body).includes('private-'), false);
+    assert.equal((await f.request('/api/email/confirm', { token, method: 'POST', body: { code: '000000' } })).body.error, 'invalid_or_expired_code');
+    assert.equal((await f.request('/api/email/confirm', { token, method: 'POST', body: { code: '123456', userId: 'untrusted' } })).status, 200);
+    assert.equal((await f.request('/api/me', { token })).body.profile.email_verified, 1);
+    assert.equal((await f.request('/api/discover', { token })).status, 200);
+    const encrypted = f.sqlite.prepare('SELECT appwrite_secret_cipher FROM sessions').get()!.appwrite_secret_cipher;
+    assert.equal(String(encrypted).includes('private-provider-session'), false);
+    const second = await f.request('/auth/login', { method: 'POST', body: { email: 'verified@example.test', password: '123456789', deviceName: 'second' } });
+    assert.equal(second.status, 200);
+    const listed = await f.request('/api/sessions', { token });
+    const otherSession = listed.body.sessions.find((s: any) => s.deviceName === 'second');
+    assert.equal((await f.request(`/api/sessions/${otherSession.id}`, { token, method: 'DELETE' })).status, 200);
+    assert.equal((await f.request('/api/me', { token: second.body.token })).status, 401);
+    assert.equal(provider.sessions.size, 1);
+    await f.request('/auth/logout', { token, method: 'POST' });
+    assert.equal(provider.sessions.size, 0);
+    assert.equal((await f.request('/api/me', { token })).status, 401);
+});
+
+test('Appwrite migration preserves the existing profile and reset revokes both session stores', async t => {
+    const f = fixture(), old = await f.account(); await f.photo(old.token);
+    await f.request('/api/profile', { token: old.token, method: 'PATCH', body: { display_name: 'preserved', birth_year: 1995, prefecture_code: '13' } });
+    const provider = providerMock(f, t);
+    assert.equal((await f.request('/api/me', { token: old.token })).status, 401);
+    assert.equal((await f.request('/auth/login', { method: 'POST', body: { email: old.email, password: 'wrong-password' } })).status, 401);
+    assert.equal(provider.users.size, 0);
+    const login = await f.request('/auth/login', { method: 'POST', body: { email: old.email, password: 'a-valid-password' } });
+    assert.equal(login.status, 200); assert.equal(login.body.user.id, old.id);
+    assert.equal((await f.request('/api/me', { token: login.body.token })).body.profile.display_name, 'preserved');
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM password_credentials').get()!.n, 0);
+    const forgot = await f.request('/auth/password/forgot', { method: 'POST', body: { email: old.email } });
+    assert.equal(forgot.status, 200); assert.equal(forgot.body.code, undefined); assert.equal(forgot.body.secret, undefined);
+    const reset = { email: old.email, userId: forgot.body.userId, code: '654321', password: 'new-pass9' };
+    assert.equal((await f.request('/auth/password/reset', { method: 'POST', body: reset })).status, 200);
+    assert.equal(provider.sessions.size, 0);
+    assert.equal((await f.request('/api/me', { token: login.body.token })).status, 401);
+    assert.equal((await f.request('/auth/password/reset', { method: 'POST', body: reset })).status, 400);
+    const relogin = await f.request('/auth/login', { method: 'POST', body: { email: old.email, password: reset.password } });
+    assert.equal(relogin.status, 200);
+    assert.equal((await f.request('/api/password/change', { token: relogin.body.token, method: 'POST', body: { password: reset.password, newPassword: 'another-9' } })).status, 200);
+    assert.equal(provider.sessions.size, 0);
+    assert.equal((await f.request('/api/me', { token: relogin.body.token })).status, 401);
+});
+
+test('Appwrite account deletion reauthenticates and retries remote deletion durably', async t => {
+    const f = fixture(), provider = providerMock(f, t);
+    const signup = await f.request('/auth/signup', { method: 'POST', body: { email: 'delete@example.test', password: '123456789' } });
+    const token = signup.body.token;
+    assert.equal((await f.request('/api/account/delete', { token, method: 'POST', body: { password: 'incorrect-password' } })).status, 401);
+    provider.setFailDeletion(true);
+    assert.equal((await f.request('/api/account/delete', { token, method: 'POST', body: { password: '123456789' } })).status, 200);
+    await Promise.all(f.pending);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM users').get()!.n, 0);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM appwrite_deletions').get()!.n, 1);
+    provider.setFailDeletion(false); await dispatchAccountDeletions(f.env);
+    assert.equal(provider.users.size, 0);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM appwrite_deletions').get()!.n, 0);
+});
 
 test('D1 image chunks preserve bytes, overwrite atomically and cascade on deletion', async () => {
     const f = fixture(), store = imageStore(f.env);

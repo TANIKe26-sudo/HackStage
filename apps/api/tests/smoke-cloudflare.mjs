@@ -10,7 +10,9 @@ async function request(path,{method='GET',token,body}={}){
   const data=await response.json();if(!response.ok)throw new Error(`${method} ${path}: ${response.status} ${data.error}`);return data;
 }
 try{
-  assert.equal((await request('/health/ready')).ok,true);
+  const readiness=await request('/health/ready');
+  assert.equal(readiness.ok,true);
+  assert.equal(readiness.authProvider,'local','This legacy test uses fake emails; use a separate development API with AUTH_PROVIDER=local.');
   for(let n=0;n<2;n++){
     const password=randomBytes(20).toString('base64'),email=`smoke-${randomBytes(8).toString('hex')}@example.test`;
     const signup=await request('/auth/signup',{method:'POST',body:{email,password}});

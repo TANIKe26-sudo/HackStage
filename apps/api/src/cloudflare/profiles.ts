@@ -1,3 +1,4 @@
+import { usesAppwrite, providerLogin, appwrite, dispatchAccountDeletions } from './appwrite.js';
 import { imageStore } from './image-store.js';
 import { audit, blocked, contactHash, fail, id, input, limited, now, notify, page, password, rate, stageProgress, text, verifyPassword, type App, type Ctx, type Row } from './core.js';
 import { isLocationRange, prefectureNames, prefectureRegionSql, type LocationRange } from './locations.js';
@@ -21,7 +22,7 @@ export function profileRoutes(app: App) {
     app.get('/api/me', async (c) => {
         const profile = await c.env.DB.prepare(`SELECT p.*,u.email,u.email_verified,u.status,
       (SELECT id FROM captures WHERE owner_id=p.user_id AND stage=0 AND (original_key IS NOT NULL OR object_key LIKE 'public/%') ORDER BY created_at DESC LIMIT 1) AS profile_photo_capture_id FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=?`).bind(c.get('userId')).first();
-        return c.json({ profile });
+        return c.json({ profile: profile ? { ...profile, email_verification_required: usesAppwrite(c.env) } : null });
     });
     app.patch('/api/profile', async (c) => {
         const body = await input(c), sets: string[] = [], values: unknown[] = [];
@@ -183,19 +184,32 @@ export function profileRoutes(app: App) {
     app.delete('/api/account', async (c) => {
         const body = await input(c), me = c.get('userId');
         await rate(c, 'delete-account', me, 5);
-        const credential = await c.env.DB.prepare('SELECT password_hash FROM password_credentials WHERE user_id=?').bind(me).first<Row>();
-        if (!credential || !await verifyPassword(password(body.password), credential.password_hash))
-            fail(401, 'reauthentication_failed');
+        let providerId: string | null = null;
+        if (usesAppwrite(c.env)) {
+            const user = await c.env.DB.prepare('SELECT email,appwrite_id FROM users WHERE id=?').bind(me).first<Row>();
+            if (!user?.appwrite_id) return fail(401, 'unauthorized');
+            let remote;
+            try { remote = await providerLogin(c.env, user.email, password(body.password)); }
+            catch { return fail(401, 'reauthentication_failed'); }
+            await appwrite(c.env, '/account/sessions/current', 'DELETE', undefined, remote.session.secret);
+            if (remote.account.$id !== user.appwrite_id) fail(401, 'reauthentication_failed');
+            providerId = user.appwrite_id;
+        } else {
+            const credential = await c.env.DB.prepare('SELECT password_hash FROM password_credentials WHERE user_id=?').bind(me).first<Row>();
+            if (!credential || !await verifyPassword(password(body.password), credential.password_hash)) fail(401, 'reauthentication_failed');
+        }
         const captures = await c.env.DB.prepare('SELECT object_key,original_key FROM captures WHERE owner_id=?').bind(me).all<Row>();
         const keys = [...new Set(captures.results.flatMap(r => [r.object_key, r.original_key]).filter(Boolean))] as string[];
         for (let i = 0; i < keys.length; i += 100)
             await imageStore(c.env).delete(keys.slice(i, i + 100));
         await c.env.DB.batch([
+            ...(providerId ? [c.env.DB.prepare('INSERT OR IGNORE INTO appwrite_deletions(appwrite_id,created_at) VALUES(?,?)').bind(providerId, now())] : []),
             c.env.DB.prepare('DELETE FROM email_outbox WHERE recipient=(SELECT email FROM users WHERE id=?)').bind(me),
             c.env.DB.prepare('UPDATE audit_logs SET actor_id=NULL WHERE actor_id=?').bind(me),
             c.env.DB.prepare('UPDATE audit_logs SET subject_id=NULL WHERE subject_id=?').bind(me),
             c.env.DB.prepare('DELETE FROM users WHERE id=?').bind(me),
         ]);
+        if (providerId) c.executionCtx.waitUntil(dispatchAccountDeletions(c.env));
         await audit(c.env, 'account_deleted', null, null, { deleted: true });
         return c.json({ deleted: true });
     });

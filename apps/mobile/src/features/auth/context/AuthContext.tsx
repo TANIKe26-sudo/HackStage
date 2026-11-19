@@ -21,7 +21,7 @@ type AuthContextValue = {
   isRestoring: boolean;
   token: string | null;
   profile: AuthProfile | null;
-  createAccount: (email: string, password: string) => Promise<void>;
+  createAccount: (email: string, password: string) => Promise<AuthProfile | null>;
   logIn: (email: string, password: string) => Promise<AuthProfile | null>;
   saveProfile: (profile: ProfileInput, photoDataUrl?: string | null) => Promise<void>;
   logOut: () => Promise<void>;
@@ -67,10 +67,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     });
     if (!result.token) throw new Error('APIからログイン情報を受け取れませんでした。');
 
-    await SecureStore.setItemAsync(SESSION_KEY, result.token);
-    setToken(result.token);
     const current = await apiRequest<{ profile: AuthProfile | null }>('/api/me', result.token);
+    await SecureStore.setItemAsync(SESSION_KEY, result.token);
     setProfile(current.profile);
+    setToken(result.token);
+    return current.profile;
   };
 
   const logIn = async (email: string, password: string) => {

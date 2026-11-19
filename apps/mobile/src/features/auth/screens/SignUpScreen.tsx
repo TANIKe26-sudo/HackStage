@@ -1,6 +1,7 @@
 import { classificationLabels } from '../api/classification';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
+import { needsEmailVerification } from '../api/client';
 import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -96,6 +97,8 @@ export default function SignUpScreen() {
       setBusy(false);
     }
   };
+
+  if (token && needsEmailVerification(profile)) return <Redirect href="/verify-email" />;
 
   return (
     <SafeAreaView style={styles.safeArea}>

@@ -11,7 +11,10 @@
     "enabled": true
   },
   "vars": {
-    "APP_ENV": "development"
+    "APP_ENV": "development",
+    "AUTH_PROVIDER": "appwrite",
+    "APPWRITE_ENDPOINT": "https://sgp.cloud.appwrite.io/v1",
+    "APPWRITE_PROJECT_ID": "6afe98140007431a2096"
   },
   "d1_databases": [
     {
@@ -32,7 +35,10 @@
       "account_id": "94525e870e53136c86279f0a75bc70b6",
       "workers_dev": true,
       "vars": {
-        "APP_ENV": "production"
+        "APP_ENV": "production",
+        "AUTH_PROVIDER": "appwrite",
+        "APPWRITE_ENDPOINT": "https://sgp.cloud.appwrite.io/v1",
+        "APPWRITE_PROJECT_ID": "6afe98140007431a2096"
       },
       "d1_databases": [
         {
