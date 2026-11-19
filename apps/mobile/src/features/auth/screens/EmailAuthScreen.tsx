@@ -121,6 +121,12 @@ export default function EmailAuthScreen({ mode }: EmailAuthScreenProps) {
         />
         {busy ? <ActivityIndicator style={styles.spinner} color={colors.primary} /> : null}
 
+        {!isSignup ? (
+          <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.push('/reset-password')} style={styles.switchButton}>
+            <Text style={styles.switchText}>パスワードを忘れた方</Text>
+          </Pressable>
+        ) : null}
+
         <Pressable
           accessibilityRole="button"
           disabled={busy}
