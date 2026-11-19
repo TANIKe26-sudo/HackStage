@@ -2,13 +2,14 @@ import { Ionicons } from '@react-native-vector-icons/ionicons';
 
 export type AppIconName =
   | 'search'
+  | 'home'
   | 'heart'
   | 'chat'
   | 'profile'
-  | 'profileEdit'
   | 'visibility'
   | 'calendar'
   | 'location'
+  | 'hobbies'
   | 'report'
   | 'accountDelete'
   | 'hidePeople'
@@ -24,13 +25,14 @@ type AppIconProps = {
 
 const iconNames = {
   search: 'search-outline',
+  home: 'home-outline',
   heart: 'heart-outline',
   chat: 'chatbubble-ellipses-outline',
   profile: 'person-outline',
-  profileEdit: 'person-outline',
   visibility: 'lock-closed-outline',
   calendar: 'calendar-outline',
   location: 'location-outline',
+  hobbies: 'color-palette-outline',
   report: 'checkmark-outline',
   accountDelete: 'trash-outline',
   hidePeople: 'person-remove-outline',

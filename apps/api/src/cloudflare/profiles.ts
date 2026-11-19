@@ -18,6 +18,16 @@ function choices(value: unknown) {
         return fail(400, 'invalid_preferences');
     return [...new Set(value as string[])];
 }
+const hobbyIds = new Set([
+    'food', 'music', 'travel', 'manga-anime', 'sports', 'alcohol', 'movies', 'animals',
+    'fashion-beauty', 'leisure', 'games', 'outdoors', 'vehicles', 'comedy', 'shows',
+    'lifestyle', 'art', 'books', 'technology', 'diy', 'celebrities', 'learning',
+]);
+function hobbyChoices(value: unknown) {
+    if (!Array.isArray(value) || value.length > hobbyIds.size || value.some(v => typeof v !== 'string' || !hobbyIds.has(v)))
+        return fail(400, 'invalid_hobbies');
+    return [...new Set(value as string[])];
+}
 export function profileRoutes(app: App) {
     app.get('/api/me', async (c) => {
         const profile = await c.env.DB.prepare(`SELECT p.*,u.email,u.email_verified,u.status,
@@ -63,6 +73,15 @@ export function profileRoutes(app: App) {
         await c.env.DB.prepare(`UPDATE profiles SET ${sets.join(',')},updated_at=? WHERE user_id=?`).bind(...values, now(), c.get('userId')).run();
         return c.json({ ok: true });
     });
+    app.get('/api/profile/hobbies', async (c) => {
+        const row = await c.env.DB.prepare('SELECT hobbies FROM profiles WHERE user_id=?').bind(c.get('userId')).first<Row>();
+        return c.json({ hobbies: JSON.parse(row?.hobbies ?? '[]') });
+    });
+    app.put('/api/profile/hobbies', async (c) => {
+        const hobbies = hobbyChoices((await input(c)).hobbies);
+        await c.env.DB.prepare('UPDATE profiles SET hobbies=?,updated_at=? WHERE user_id=?').bind(JSON.stringify(hobbies), now(), c.get('userId')).run();
+        return c.json({ ok: true });
+    });
     app.get('/api/profiles/:id', async (c) => c.json({ profile: await publicProfile(c, c.req.param('id')) }));
     app.get('/api/preferences/discovery', async (c) => {
         const row = await c.env.DB.prepare('SELECT * FROM discovery_preferences WHERE user_id=?').bind(c.get('userId')).first<Row>();
@@ -97,6 +116,8 @@ export function profileRoutes(app: App) {
         await limited(c, 'discovery');
         const me = c.get('userId'), { limit } = page(c, 30), year = new Date().getUTCFullYear();
         const reuseUnswiped = c.req.query('reuseUnswiped') === 'true' ? 1 : 0;
+        const hobbyId = c.req.query('hobby') ?? null;
+        if (hobbyId !== null && !hobbyIds.has(hobbyId)) fail(400, 'invalid_hobbies');
         const candidateRegion = prefectureRegionSql('p'), ownRegion = prefectureRegionSql('own');
         await c.env.DB.prepare('INSERT OR IGNORE INTO discovery_preferences(user_id) VALUES(?)').bind(me).run();
         const rows = await c.env.DB.prepare(`SELECT p.user_id,p.display_name,p.birth_year,CASE WHEN p.location_scope='area' THEN p.area ELSE NULL END AS area,p.bio,p.purpose,p.conversation_pace,p.throat_class,
@@ -107,6 +128,7 @@ export function profileRoutes(app: App) {
       WHERE p.user_id<>own.user_id AND u.status='active' AND p.display_name<>'' AND p.birth_year IS NOT NULL AND own.birth_year IS NOT NULL
       AND (? - p.birth_year) BETWEEN mine.min_age AND mine.max_age
       AND (? - own.birth_year) BETWEEN COALESCE(theirs.min_age,18) AND COALESCE(theirs.max_age,120)
+      AND (? IS NULL OR EXISTS(SELECT 1 FROM json_each(p.hobbies) candidate_hobby WHERE candidate_hobby.value=?))
       AND (mine.location_range IS NULL OR mine.location_range='anywhere'
         OR (mine.location_range='same_prefecture' AND p.location_scope='area' AND p.prefecture_code=own.prefecture_code)
         OR (mine.location_range='same_region' AND p.location_scope='area' AND ${candidateRegion}=${ownRegion}))
@@ -126,7 +148,7 @@ export function profileRoutes(app: App) {
       AND (?=1 OR NOT EXISTS(SELECT 1 FROM discovery_impressions WHERE viewer_id=own.user_id AND candidate_id=p.user_id AND shown_at>?))
       AND NOT EXISTS(SELECT 1 FROM user_contact_identifiers ci JOIN contact_hides ch ON ch.contact_hash=ci.contact_hash
         WHERE (ch.user_id=own.user_id AND ci.user_id=p.user_id) OR (ch.user_id=p.user_id AND ci.user_id=own.user_id))
-      ORDER BY exposure,COALESCE((SELECT shown_at FROM discovery_impressions WHERE viewer_id=own.user_id AND candidate_id=p.user_id),'') LIMIT ?`).bind(me, year, year, now(), reuseUnswiped, new Date(Date.now() - 86400000).toISOString(), limit).all<Row>();
+      ORDER BY exposure,COALESCE((SELECT shown_at FROM discovery_impressions WHERE viewer_id=own.user_id AND candidate_id=p.user_id),'') LIMIT ?`).bind(me, year, year, hobbyId, hobbyId, now(), reuseUnswiped, new Date(Date.now() - 86400000).toISOString(), limit).all<Row>();
         if (rows.results.length)
             await c.env.DB.batch(rows.results.map(row => c.env.DB.prepare(`INSERT INTO discovery_impressions(viewer_id,candidate_id,shown_at,impressions) VALUES(?,?,?,1) ON CONFLICT(viewer_id,candidate_id) DO UPDATE SET shown_at=excluded.shown_at,impressions=discovery_impressions.impressions+1`).bind(me, row.user_id, now())));
         return c.json({ candidates: rows.results, candidateCount: rows.results.length, notice: rows.results.length < limit ? '候補が少なくなっています。条件を広げるか、後でもう一度お試しください。' : null, paidPriority: false });

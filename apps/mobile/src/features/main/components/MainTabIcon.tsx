@@ -1,7 +1,7 @@
 import { colors } from '../../../theme/tokens';
 import { AppIcon, type AppIconName } from './AppIcon';
 
-export type MainTabIconName = Extract<AppIconName, 'search' | 'heart' | 'chat' | 'profile'>;
+export type MainTabIconName = Extract<AppIconName, 'home' | 'search' | 'heart' | 'chat' | 'profile'>;
 
 type MainTabIconProps = {
   name: MainTabIconName;

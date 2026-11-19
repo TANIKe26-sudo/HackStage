@@ -4,12 +4,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../../theme/tokens';
 import { MainTabIcon, type MainTabIconName } from './MainTabIcon';
 
-export type MainTabId = 'search' | 'likes' | 'chat' | 'profile';
+export type MainTabId = 'home' | 'search' | 'chat' | 'likes' | 'profile';
 
 const tabs: { id: MainTabId; label: string; icon: MainTabIconName }[] = [
+  { id: 'home', label: 'ホーム', icon: 'home' },
   { id: 'search', label: '探す', icon: 'search' },
-  { id: 'likes', label: 'いいね', icon: 'heart' },
   { id: 'chat', label: 'トーク', icon: 'chat' },
+  { id: 'likes', label: 'いいね', icon: 'heart' },
   { id: 'profile', label: 'マイページ', icon: 'profile' },
 ];
 

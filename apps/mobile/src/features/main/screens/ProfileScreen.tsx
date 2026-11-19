@@ -16,9 +16,10 @@ import { useAuth } from '../../auth/context/AuthContext';
 import { colors, spacing } from '../../../theme/tokens';
 import { MainTabBar, type MainTabId } from '../components/MainTabBar';
 import { ProfileSettingRow } from '../components/ProfileSettingRow';
+import { AppIcon } from '../components/AppIcon';
 
 const settings = [
-  { icon: 'profileEdit', label: 'プロフィール編集' },
+  { icon: 'hobbies', label: '趣味を設定' },
   { icon: 'calendar', label: '待ち合わせ予定' },
   { icon: 'location', label: 'マッチング範囲' },
   { icon: 'report', label: '通報・ブロック' },
@@ -48,6 +49,7 @@ export default function ProfileScreen() {
   };
 
   const handleTabPress = (tab: MainTabId) => {
+    if (tab === 'home') router.replace('/home');
     if (tab === 'search') router.replace('/discover');
     if (tab === 'likes') router.replace('/likes');
     if (tab === 'chat') router.replace('/matches');
@@ -75,7 +77,12 @@ export default function ProfileScreen() {
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.profileCard}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="プロフィールを編集"
+            onPress={() => router.push('/sign-up')}
+            style={({ pressed }) => [styles.profileCard, pressed && styles.pressed]}
+          >
             <View style={styles.photo}><ProtectedPhoto captureId={photoCaptureId} /></View>
             <View style={styles.profileInfo}>
               <Text numberOfLines={1} style={styles.name}>
@@ -88,7 +95,8 @@ export default function ProfileScreen() {
                 <Text style={styles.throatLabel}>{getThroatLabel(profile.throat_class)}</Text>
               ) : null}
             </View>
-          </View>
+            <AppIcon name="chevron" size={18} color={colors.mutedText} />
+          </Pressable>
 
           <View style={styles.settings}>
             {settings.map((setting) => (
@@ -97,11 +105,7 @@ export default function ProfileScreen() {
                 icon={setting.icon}
                 label={setting.label}
                 onPress={() => {
-                  if (setting.icon === 'profileEdit') {
-                    router.push('/sign-up');
-                  } else {
-                    router.push({ pathname: '/profile-settings/[kind]', params: { kind: setting.icon } });
-                  }
+                  router.push({ pathname: '/profile-settings/[kind]', params: { kind: setting.icon } });
                 }}
               />
             ))}

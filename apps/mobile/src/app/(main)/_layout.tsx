@@ -24,6 +24,16 @@ export default function MainLayout() {
         }}
       />
       <Stack.Screen
+        name="discover/[hobby]"
+        options={{
+          animation: Platform.OS === 'ios' ? 'default' : 'slide_from_right',
+          animationMatchesGesture: true,
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      />
+      <Stack.Screen
         name="daily-topic/[conversationId]"
         options={{
           animation: Platform.OS === 'ios' ? 'default' : 'slide_from_right',
