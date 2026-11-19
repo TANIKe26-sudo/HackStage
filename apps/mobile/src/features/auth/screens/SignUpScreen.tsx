@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuthButton } from '../components/AuthButton';
 import { CameraIcon } from '../components/CameraIcon';
 import { FormField } from '../components/FormField';
+import { PrefectureSelect } from '../components/PrefectureSelect';
 import { useAuth } from '../context/AuthContext';
 import { useSignUpDraft } from '../context/SignUpDraftContext';
 import { colors, spacing } from '../../../theme/tokens';
@@ -20,7 +21,7 @@ export default function SignUpScreen() {
   const [age, setAge] = useState(
     profile?.birth_year ? String(new Date().getFullYear() - profile.birth_year) : '',
   );
-  const [area, setArea] = useState(profile?.area ?? '');
+  const [prefectureCode, setPrefectureCode] = useState<string | null>(profile?.prefecture_code ?? null);
   const [purpose, setPurpose] = useState(profile?.purpose ?? '');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -58,8 +59,8 @@ export default function SignUpScreen() {
       setNotice('18歳以上の年齢を入力してください。');
       return;
     }
-    if (!area.trim() || area.trim().length > 80) {
-      setNotice('お住まいの地域を入力してください。');
+    if (!prefectureCode) {
+      setNotice('お住まいの都道府県を選択してください。');
       return;
     }
 
@@ -70,7 +71,7 @@ export default function SignUpScreen() {
         {
           display_name: name.trim(),
           birth_year: new Date().getFullYear() - numericAge,
-          area: area.trim(),
+          prefecture_code: prefectureCode,
           purpose: purpose.trim(),
           conversation_pace: profile?.conversation_pace ?? 'balanced',
           throat_class: profilePhotoClassification ?? profile?.throat_class ?? 'pending',
@@ -164,13 +165,7 @@ export default function SignUpScreen() {
             onChangeText={(value) => setAge(value.replace(/\D/g, '').slice(0, 3))}
             maxLength={3}
           />
-          <FormField
-            label="お住まいの地域"
-            placeholder="例) 東京都"
-            value={area}
-            onChangeText={setArea}
-            maxLength={80}
-          />
+          <PrefectureSelect label="お住まいの都道府県" value={prefectureCode} onChange={setPrefectureCode} />
           <FormField
             label="お相手探しの目的"
             placeholder="例) 真剣な交際"
@@ -320,5 +315,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     paddingHorizontal: spacing.md,
     paddingVertical: 7,
+  },
+  locationHelp: {
+    color: colors.mutedText,
+    fontSize: 12,
+    lineHeight: 18,
   },
 });

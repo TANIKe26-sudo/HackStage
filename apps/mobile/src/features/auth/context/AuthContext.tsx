@@ -10,7 +10,7 @@ const SESSION_KEY = 'nodobito.api.session';
 type ProfileInput = {
   display_name: string;
   birth_year: number;
-  area: string;
+  prefecture_code: string;
   purpose: string;
   conversation_pace: string;
   throat_class: 'present' | 'absent' | 'pending';

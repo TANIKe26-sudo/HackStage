@@ -42,10 +42,10 @@ Expo Goなどの開発モードで、APIが上記のローカルメールモー�
 
 ## 紹介・マッチング・プロフィール
 
-- `GET /api/me`、`PATCH /api/profile`：既存モバイルと同じsnake_caseのプロフィール項目。
+- `GET /api/me`、`PATCH /api/profile`：既存モバイルと同じsnake_caseのプロフィール項目。居住地は `prefecture_code`（JIS X 0401の2桁コード）で登録し、表示用の `area` は都道府県名にそろえます。
 - `GET /api/profiles/:id`：相手の詳細。`location_scope=hidden`または`meetup`なら相手へ居住エリアを返しません。
-- `GET/PUT /api/preferences/discovery`：`acceptedPurposes`、`acceptedPaces`、`preferredClassification`、`minAge`、`maxAge`。空配列は条件指定なし。双方の条件を照合します。
-- `GET /api/discover?limit=10`：表示累計の少ない相手を優先し、同じ相手への再紹介は24時間空けます。ブロック・非表示連絡先・利用制限を除外します。有料優先表示はありません。
+- `GET/PUT/PATCH /api/preferences/discovery`：`acceptedPurposes`、`acceptedPaces`、`preferredClassification`、`minAge`、`maxAge`、`locationRange`。地域範囲は `null`（未設定）、`same_prefecture`、`same_region`、`anywhere`。年齢・目的など双方の条件を照合します。
+- `GET /api/discover?limit=10`：表示累計の少ない相手を優先し、同じ相手への再紹介は24時間空けます。地域範囲が同じ都道府県・同じ地方の場合は、地域を公開していて指定条件に合う相手だけを候補にします。未設定・どこでもOKなら地域非公開の相手も含めます。同じ地方は北海道、東北、関東、中部、関西、中国、四国、九州・沖縄の8区分です。ブロック・非表示連絡先・利用制限も除外します。有料優先表示はありません。
 - `POST /api/likes`：`toUserId`。相互いいねだけでマッチし、同じいいねによる通知・マッチの重複を防ぎます。
 - `GET /api/likes/received`、`GET /api/matches`：受信いいね・マッチ一覧。
 

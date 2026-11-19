@@ -4,6 +4,7 @@ export type AuthProfile = {
   display_name: string;
   birth_year: number | null;
   area: string | null;
+  prefecture_code?: string | null;
   bio: string;
   purpose: string | null;
   conversation_pace: string | null;
@@ -37,6 +38,9 @@ const errorMessages: Record<string, string> = {
   maintenance: '現在メンテナンス中です。しばらくしてからお試しください。',
   request_too_large: '送信する画像が大きすぎます。アプリ内カメラで撮り直してください。',
   invalid_preferences: '年齢の範囲を18〜120歳で指定してください。',
+  invalid_location_range: 'マッチング範囲を選び直してください。',
+  invalid_prefecture: '都道府県を選び直してください。',
+  prefecture_required: '同じ都道府県・同じ地方で探すには、プロフィールに都道府県を設定してください。',
   reauthentication_failed: '確認用パスワードが正しくありません。',
   invalid_capture_size: '画像を読み込めませんでした。アプリ内カメラで撮り直してください。',
   match_not_found: 'このトークは利用できません。ブロックや退会の可能性があります。',

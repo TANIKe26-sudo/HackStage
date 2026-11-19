@@ -13,7 +13,13 @@ import { MatchSelectorRow } from './MatchSelectorRow';
 
 export type SettingKind = 'visibility' | 'calendar' | 'location' | 'report' | 'hidePeople' | 'accountDelete';
 type Plan = { id: string; startsAt: string | null; placeLabel: string | null; revision: number; exactLocation: string | null; status: string; confirmed: { you: boolean; other: boolean }; arrived: { you: string | null; other: string | null } };
+type LocationRange = 'same_prefecture' | 'same_region' | 'anywhere';
 const titles: Record<SettingKind, string> = { visibility: '公開範囲', calendar: '待ち合わせ予定', location: 'マッチング範囲', report: '通報・ブロック', hidePeople: '知り合いを非表示', accountDelete: 'アカウント削除' };
+const locationRangeOptions: { value: LocationRange; label: string }[] = [
+  { value: 'same_prefecture', label: '同じ都道府県' },
+  { value: 'same_region', label: '同じ地方' },
+  { value: 'anywhere', label: 'どこでもOK' },
+];
 function maskEmail(email: string) {
   const separator = email.indexOf('@');
   const visibleLength = separator < 0 ? email.length : separator;
@@ -22,8 +28,8 @@ function maskEmail(email: string) {
 function Button({ label, onPress, disabled, centered = false, primary = false }: { label: string; onPress: () => void; disabled?: boolean; centered?: boolean; primary?: boolean }) {
   return <Pressable accessibilityRole="button" disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={({ pressed }) => [styles.button, centered && styles.centeredButton, primary && styles.primaryButton, disabled && { opacity: 0.4 }, pressed && primary && styles.primaryButtonPressed]}><Text style={[styles.buttonText, primary && styles.primaryButtonText]}>{label}</Text></Pressable>;
 }
-function Field({ label, value, onChange, password, numeric = false }: { label: string; value: string; onChange: (value: string) => void; password?: boolean; numeric?: boolean }) {
-  return <View style={{ gap: 6 }}><Text style={styles.text}>{label}</Text><TextInput accessibilityLabel={label} value={value} onChangeText={input => onChange(numeric ? input.replace(/\D/g, '').slice(0, 3) : input)} secureTextEntry={password} keyboardType={numeric ? 'number-pad' : 'default'} autoCapitalize="none" maxLength={password ? 128 : numeric ? 3 : 1000} style={styles.field} /></View>;
+function Field({ label, value, onChange, password, numeric = false, boldLabel = false }: { label: string; value: string; onChange: (value: string) => void; password?: boolean; numeric?: boolean; boldLabel?: boolean }) {
+  return <View style={{ gap: 6 }}><Text style={[styles.text, boldLabel && styles.fieldLabelBold]}>{label}</Text><TextInput accessibilityLabel={label} value={value} onChangeText={input => onChange(numeric ? input.replace(/\D/g, '').slice(0, 3) : input)} secureTextEntry={password} keyboardType={numeric ? 'number-pad' : 'default'} autoCapitalize="none" maxLength={password ? 128 : numeric ? 3 : 1000} style={styles.field} /></View>;
 }
 export function ProfileSettings({ kind }: { kind: SettingKind }) {
   return (
@@ -39,7 +45,8 @@ function SettingsContent({ kind }: { kind: SettingKind }) {
   const [throat, setThroat] = useState(profile?.throat_class ?? 'pending');
   const [bio, setBio] = useState(profile?.bio ?? '');
   const [pace, setPace] = useState(profile?.conversation_pace ?? 'balanced');
-  const [minAge, setMinAge] = useState('18'), [maxAge, setMaxAge] = useState('120'), [area, setArea] = useState('');
+  const [minAge, setMinAge] = useState('18'), [maxAge, setMaxAge] = useState('120');
+  const [locationRange, setLocationRange] = useState<LocationRange | null>(null);
   const [contacts, setContacts] = useState(''), [password, setPassword] = useState('');
   const [matches, setMatches] = useState<MatchRow[]>([]), [selected, setSelected] = useState<string | null>(null);
   const [matchSearch, setMatchSearch] = useState('');
@@ -69,7 +76,7 @@ function SettingsContent({ kind }: { kind: SettingKind }) {
     setHiddenEmails(emails);
   };
   const load = useCallback(async (signal?: AbortSignal) => {
-    const result: { preferences?: { minAge: number; maxAge: number; area: string }; matches?: MatchRow[]; blocks?: { user_id: string; display_name: string }[]; hiddenContactCount?: number } = {};
+    const result: { preferences?: { minAge: number; maxAge: number; locationRange: LocationRange | null }; matches?: MatchRow[]; blocks?: { user_id: string; display_name: string }[]; hiddenContactCount?: number } = {};
     if (kind === 'location') result.preferences = (await request<{ preferences: NonNullable<typeof result.preferences> }>('/api/preferences/discovery', 'GET', undefined, signal)).preferences;
     if (kind === 'report' || kind === 'calendar') result.matches = (await api.matches(signal)).matches;
     if (kind === 'report') result.blocks = (await request<{ blocks: NonNullable<typeof result.blocks> }>('/api/blocks', 'GET', undefined, signal)).blocks;
@@ -77,7 +84,7 @@ function SettingsContent({ kind }: { kind: SettingKind }) {
     return result;
   }, [api, kind, request]);
   const apply = useCallback((result: Awaited<ReturnType<typeof load>>) => {
-    if (result.preferences) { setMinAge(String(result.preferences.minAge)); setMaxAge(String(result.preferences.maxAge)); setArea(result.preferences.area); }
+    if (result.preferences) { setMinAge(String(result.preferences.minAge)); setMaxAge(String(result.preferences.maxAge)); setLocationRange(result.preferences.locationRange); }
     if (result.matches) setMatches(result.matches);
     if (result.blocks) setBlocks(result.blocks);
     if (result.hiddenContactCount !== undefined) setHiddenContactCount(result.hiddenContactCount);
@@ -145,11 +152,37 @@ function SettingsContent({ kind }: { kind: SettingKind }) {
       <Button label="保存" centered primary disabled={busy} onPress={() => void run(async () => { await request('/api/profile', 'PATCH', { location_scope: scope, throat_class: throat, bio, conversation_pace: pace }); await refreshProfile(); }, '保存しました')} />
     </> : null}
     {kind === 'location' ? <>
-      <Field label="最低年齢" value={minAge} onChange={setMinAge} numeric />
-      <Field label="最高年齢" value={maxAge} onChange={setMaxAge} numeric />
-      <Field label="地域（完全一致・空欄は指定なし）" value={area} onChange={setArea} />
-      <Text style={styles.text}>地域を非公開にしている相手は、地域指定時の候補には含まれません。</Text>
-      <Button label="保存" centered primary disabled={busy} onPress={() => void run(async () => { await request('/api/preferences/discovery', 'PATCH', { minAge: Number(minAge), maxAge: Number(maxAge), area }); }, '検索条件を保存しました')} />
+      <Field label="最低年齢" value={minAge} onChange={setMinAge} numeric boldLabel />
+      <Field label="最高年齢" value={maxAge} onChange={setMaxAge} numeric boldLabel />
+      <View style={styles.locationRangeSection}>
+        <Text style={styles.sectionTitle}>地域</Text>
+        {locationRangeOptions.map(option => {
+          const checked = locationRange === option.value;
+          return <Pressable
+            key={option.value}
+            accessibilityRole="radio"
+            accessibilityState={{ checked, disabled: busy }}
+            disabled={busy}
+            onPress={() => { setLocationRange(option.value); setError(''); }}
+            style={({ pressed }) => [styles.locationRangeOption, checked && styles.locationRangeOptionSelected, pressed && styles.pressed]}
+          >
+            <View style={[styles.radioOuter, checked && styles.radioOuterSelected]}>
+              {checked ? <View style={styles.radioInner} /> : null}
+            </View>
+            <Text style={styles.locationRangeLabel}>{option.label}</Text>
+          </Pressable>;
+        })}
+        {locationRange !== null ? <Pressable
+          accessibilityRole="button"
+          disabled={busy}
+          onPress={() => { setLocationRange(null); setError(''); }}
+          style={({ pressed }) => [styles.clearLocationRange, pressed && styles.pressed]}
+        ><Text style={styles.linkText}>設定を解除</Text></Pressable> : null}
+      </View>
+      {!profile?.prefecture_code ? <>
+        <Text style={styles.text}>同じ都道府県・同じ地方で探すには、プロフィールから都道府県の設定をしてください。<Text accessibilityRole="link" onPress={() => router.push('/sign-up')} style={styles.linkText}>設定する</Text></Text>
+      </> : null}
+      <Button label="保存" centered primary disabled={busy} onPress={() => void run(async () => { await request('/api/preferences/discovery', 'PATCH', { minAge: Number(minAge), maxAge: Number(maxAge), locationRange }); }, '検索条件を保存しました')} />
     </> : null}
     {kind === 'hidePeople' ? <>
       <Text style={styles.text}>知り合いのメールアドレスを入力してください。メールはこの端末の安全な領域に保存し、サーバーには照合用の値だけを保存して紹介候補から除外します。</Text>
@@ -262,6 +295,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   content: { padding: spacing.lg, gap: spacing.md },
   title: { fontSize: 21, fontWeight: '700', color: colors.text }, text: { color: colors.text, lineHeight: 22 },
+  fieldLabelBold: { fontWeight: '700' },
   field: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, backgroundColor: colors.surface, color: colors.text },
   button: { minHeight: 48, padding: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 12 },
   centeredButton: { alignItems: 'center', justifyContent: 'center' },
@@ -277,5 +311,14 @@ const styles = StyleSheet.create({
   hiddenEmail: { flex: 1, color: colors.text, fontSize: 14 },
   removeEmailButton: { minWidth: 52, minHeight: 36, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
   removeEmailLabel: { color: colors.primary, fontSize: 13, fontWeight: '600' },
+  locationRangeSection: { gap: spacing.sm },
+  locationRangeOption: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.surface, paddingHorizontal: spacing.md },
+  locationRangeOptionSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  radioOuter: { width: 21, height: 21, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: colors.mutedText, borderRadius: 11, backgroundColor: colors.surface },
+  radioOuterSelected: { borderColor: colors.primary },
+  radioInner: { width: 11, height: 11, borderRadius: 6, backgroundColor: colors.primary },
+  locationRangeLabel: { color: colors.text, fontSize: 15 },
+  clearLocationRange: { alignSelf: 'flex-start', paddingVertical: spacing.xs },
+  linkText: { color: colors.primary, fontSize: 14, fontWeight: '600', textDecorationLine: 'underline' },
   disabled: { opacity: 0.4 },
 });
