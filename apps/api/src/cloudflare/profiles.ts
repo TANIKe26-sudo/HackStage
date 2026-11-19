@@ -1,5 +1,6 @@
 import { imageStore } from './image-store.js';
 import { audit, blocked, contactHash, fail, id, input, limited, now, notify, page, password, rate, stageProgress, text, verifyPassword, type App, type Ctx, type Row } from './core.js';
+import { isLocationRange, prefectureNames, prefectureRegionSql, type LocationRange } from './locations.js';
 export async function publicProfile(c: Ctx, userId: string) {
     const me = c.get('userId');
     if (me !== userId && await blocked(c.env, me, userId))
@@ -24,7 +25,10 @@ export function profileRoutes(app: App) {
     });
     app.patch('/api/profile', async (c) => {
         const body = await input(c), sets: string[] = [], values: unknown[] = [];
-        for (const key of ['display_name', 'birth_year', 'area', 'bio', 'purpose', 'conversation_pace', 'location_scope', 'throat_class'])
+        const prefectureCode = body.prefecture_code === undefined ? undefined : text(body.prefecture_code, 2, true);
+        if (prefectureCode !== undefined && !prefectureNames[prefectureCode])
+            fail(400, 'invalid_prefecture');
+        for (const key of ['display_name', 'birth_year', 'bio', 'purpose', 'conversation_pace', 'location_scope', 'throat_class'])
             if (Object.hasOwn(body, key)) {
                 let value = body[key];
                 if (key === 'birth_year') {
@@ -41,6 +45,16 @@ export function profileRoutes(app: App) {
                 sets.push(`${key}=?`);
                 values.push(value);
             }
+        if (prefectureCode !== undefined) {
+            sets.push('prefecture_code=?', 'area=?');
+            values.push(prefectureCode, prefectureNames[prefectureCode]);
+        }
+        else if (Object.hasOwn(body, 'area')) {
+            // Legacy clients may still send a free-text area. Do not trust it for
+            // regional matching because it cannot be normalized reliably.
+            sets.push('area=?', 'prefecture_code=NULL');
+            values.push(text(body.area, 100));
+        }
         if (!sets.length)
             fail(400, 'no_profile_fields');
         await c.env.DB.prepare(`UPDATE profiles SET ${sets.join(',')},updated_at=? WHERE user_id=?`).bind(...values, now(), c.get('userId')).run();
@@ -49,7 +63,7 @@ export function profileRoutes(app: App) {
     app.get('/api/profiles/:id', async (c) => c.json({ profile: await publicProfile(c, c.req.param('id')) }));
     app.get('/api/preferences/discovery', async (c) => {
         const row = await c.env.DB.prepare('SELECT * FROM discovery_preferences WHERE user_id=?').bind(c.get('userId')).first<Row>();
-        return c.json({ preferences: { acceptedPurposes: JSON.parse(row?.accepted_purposes ?? '[]'), acceptedPaces: JSON.parse(row?.accepted_paces ?? '[]'), preferredClassification: row?.preferred_classification ?? null, minAge: row?.min_age ?? 18, maxAge: row?.max_age ?? 120, area: row?.area ?? '' } });
+        return c.json({ preferences: { acceptedPurposes: JSON.parse(row?.accepted_purposes ?? '[]'), acceptedPaces: JSON.parse(row?.accepted_paces ?? '[]'), preferredClassification: row?.preferred_classification ?? null, minAge: row?.min_age ?? 18, maxAge: row?.max_age ?? 120, locationRange: row?.location_range ?? null } });
     });
     app.put('/api/preferences/discovery', async (c) => {
         const body = await input(c), purposes = choices(body.acceptedPurposes ?? []), paces = choices(body.acceptedPaces ?? []), classification = body.preferredClassification ?? null, min = body.minAge ?? 18, max = body.maxAge ?? 120;
@@ -62,15 +76,25 @@ export function profileRoutes(app: App) {
         const body = await input(c), me = c.get('userId');
         const previous = await c.env.DB.prepare('SELECT * FROM discovery_preferences WHERE user_id=?').bind(me).first<Row>();
         const min = body.minAge ?? previous?.min_age ?? 18, max = body.maxAge ?? previous?.max_age ?? 120;
-        const area = body.area === undefined ? previous?.area ?? '' : text(body.area, 80);
+        const previousRange = (previous?.location_range as LocationRange | null | undefined) ?? null;
+        const requestedRange: unknown = body.locationRange === undefined ? previousRange : body.locationRange;
+        let locationRange: LocationRange | null = null;
+        if (requestedRange === null) locationRange = null;
+        else if (isLocationRange(requestedRange)) locationRange = requestedRange;
+        else fail(400, 'invalid_location_range');
         if (!Number.isInteger(min) || !Number.isInteger(max) || min < 18 || max > 120 || min > max) fail(400, 'invalid_preferences');
-        await c.env.DB.prepare(`INSERT INTO discovery_preferences(user_id,min_age,max_age,area) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET min_age=excluded.min_age,max_age=excluded.max_age,area=excluded.area`).bind(me, min, max, area).run();
+        if (locationRange === 'same_prefecture' || locationRange === 'same_region') {
+            const profile = await c.env.DB.prepare('SELECT prefecture_code FROM profiles WHERE user_id=?').bind(me).first<Row>();
+            if (!profile?.prefecture_code) fail(400, 'prefecture_required');
+        }
+        await c.env.DB.prepare(`INSERT INTO discovery_preferences(user_id,min_age,max_age,location_range) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET min_age=excluded.min_age,max_age=excluded.max_age,location_range=excluded.location_range`).bind(me, min, max, locationRange).run();
         return c.json({ ok: true });
     });
     app.get('/api/discover', async (c) => {
         await limited(c, 'discovery');
         const me = c.get('userId'), { limit } = page(c, 30), year = new Date().getUTCFullYear();
         const reuseUnswiped = c.req.query('reuseUnswiped') === 'true' ? 1 : 0;
+        const candidateRegion = prefectureRegionSql('p'), ownRegion = prefectureRegionSql('own');
         await c.env.DB.prepare('INSERT OR IGNORE INTO discovery_preferences(user_id) VALUES(?)').bind(me).run();
         const rows = await c.env.DB.prepare(`SELECT p.user_id,p.display_name,p.birth_year,CASE WHEN p.location_scope='area' THEN p.area ELSE NULL END AS area,p.bio,p.purpose,p.conversation_pace,p.throat_class,
       (SELECT id FROM captures WHERE owner_id=p.user_id AND stage=0 AND (original_key IS NOT NULL OR object_key LIKE 'public/%') ORDER BY created_at DESC LIMIT 1) AS initial_capture_id,
@@ -80,8 +104,12 @@ export function profileRoutes(app: App) {
       WHERE p.user_id<>own.user_id AND u.status='active' AND p.display_name<>'' AND p.birth_year IS NOT NULL AND own.birth_year IS NOT NULL
       AND (? - p.birth_year) BETWEEN mine.min_age AND mine.max_age
       AND (? - own.birth_year) BETWEEN COALESCE(theirs.min_age,18) AND COALESCE(theirs.max_age,120)
-      AND (mine.area='' OR (p.location_scope='area' AND p.area=mine.area))
-      AND (COALESCE(theirs.area,'')='' OR (own.location_scope='area' AND own.area=theirs.area))
+      AND (mine.location_range IS NULL OR mine.location_range='anywhere'
+        OR (mine.location_range='same_prefecture' AND p.location_scope='area' AND p.prefecture_code=own.prefecture_code)
+        OR (mine.location_range='same_region' AND p.location_scope='area' AND ${candidateRegion}=${ownRegion}))
+      AND (theirs.location_range IS NULL OR theirs.location_range='anywhere'
+        OR (theirs.location_range='same_prefecture' AND own.location_scope='area' AND own.prefecture_code=p.prefecture_code)
+        OR (theirs.location_range='same_region' AND own.location_scope='area' AND ${ownRegion}=${candidateRegion}))
       AND NOT EXISTS(SELECT 1 FROM mobile_profile_passes WHERE user_id=own.user_id AND other_id=p.user_id)
       AND (mine.preferred_classification IS NULL OR mine.preferred_classification=p.throat_class)
       AND (theirs.preferred_classification IS NULL OR theirs.preferred_classification=own.throat_class)

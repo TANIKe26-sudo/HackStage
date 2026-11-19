@@ -19,7 +19,6 @@ import { ProfileSettingRow } from '../components/ProfileSettingRow';
 
 const settings = [
   { icon: 'profileEdit', label: 'プロフィール編集' },
-  { icon: 'visibility', label: '公開範囲' },
   { icon: 'calendar', label: '待ち合わせ予定' },
   { icon: 'location', label: 'マッチング範囲' },
   { icon: 'report', label: '通報・ブロック' },
