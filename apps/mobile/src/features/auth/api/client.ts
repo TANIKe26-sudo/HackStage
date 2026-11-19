@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 
 export type AuthProfile = {
+  email?: string;
   display_name: string;
   birth_year: number | null;
   area: string | null;
@@ -22,6 +23,7 @@ export class ApiError extends Error {
 }
 
 const errorMessages: Record<string, string> = {
+  profile_photo_required: 'プロフィール写真が必要です。アプリ内カメラで撮影してください。',
   invalid_or_expired_code: '確認コードが正しくないか、有効期限が切れています。コードを確認するか、再送信してください。',
   mail_not_configured: 'メール送信がまだ設定されていません。運営にお問い合わせください。',
   classification_model_license_required: 'AIモデルの利用規約への同意がまだ必要です。運営側で設定してください。',
@@ -49,7 +51,7 @@ const errorMessages: Record<string, string> = {
   invalid_message: 'メッセージを1〜2000文字で入力してください。',
   invalid_answer: '回答を1〜2000文字で入力してください。',
   invalid_email: 'メールアドレスの形式を確認してください。',
-  invalid_password: 'パスワードは12〜128文字で入力してください。',
+  invalid_password: 'パスワードは9〜128文字で入力してください。',
   invalid_credentials: 'メールアドレスまたはパスワードが正しくありません。',
   email_already_registered: 'このメールアドレスは登録済みです。ログインしてください。',
   rate_limited: '試行回数が多すぎます。しばらく待ってからもう一度お試しください。',
@@ -106,5 +108,5 @@ export async function apiRequest<T extends object = Record<string, unknown>>(
 }
 
 export function isProfileReady(profile?: AuthProfile | null) {
-  return Boolean(profile?.display_name?.trim() && profile.birth_year && profile.area?.trim());
+  return Boolean(profile?.display_name?.trim() && profile.birth_year && profile.area?.trim() && profile.profile_photo_capture_id);
 }

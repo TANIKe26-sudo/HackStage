@@ -29,6 +29,8 @@ try {
     const email = `integration-${randomUUID()}@example.invalid`;
     const account = await request('/auth/signup', null, 'POST', { email, password }, 201);
     accounts.push({ ...account, email });
+    const photo = Buffer.from(encode({ width: 100, height: 200, data: new Uint8Array(100 * 200 * 4).fill(200) })).toString('base64');
+    await request('/api/captures', account.token, 'POST', { dataUrl: `data:image/png;base64,${photo}` }, 201);
     await request('/api/profile', account.token, 'PATCH', { display_name: `接続テスト${i}`, birth_year: 2000, area: '接続テスト地域', purpose: 'test', conversation_pace: 'balanced', location_scope: i === 1 ? 'hidden' : 'area' });
   }
   const [a, b, outsider] = accounts;

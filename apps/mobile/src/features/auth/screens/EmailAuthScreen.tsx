@@ -30,8 +30,8 @@ export default function EmailAuthScreen({ mode }: EmailAuthScreenProps) {
       setNotice('メールアドレスの形式を確認してください。');
       return;
     }
-    if (password.length < 12 || password.length > 128) {
-      setNotice('パスワードは12〜128文字で入力してください。');
+    if (password.length < 9 || password.length > 128) {
+      setNotice('パスワードは9〜128文字で入力してください。');
       return;
     }
     if (isSignup && password !== passwordConfirmation) {
@@ -87,7 +87,7 @@ export default function EmailAuthScreen({ mode }: EmailAuthScreenProps) {
           />
           <FormField
             label="パスワード"
-            placeholder="12文字以上"
+            placeholder="9文字以上"
             value={password}
             onChangeText={setPassword}
             secureTextEntry

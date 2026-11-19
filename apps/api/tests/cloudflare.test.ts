@@ -42,9 +42,18 @@ function fixture() {
         return { status: response.status, body: response.headers.get('content-type')?.includes('application/json') ? await response.json() as any : await response.text(), headers: response.headers };
     };
     const account = async () => { const email = `user${counter++}@example.test`; const r = await request('/auth/signup', { method: 'POST', body: { email, password: 'a-valid-password' } }); assert.equal(r.status, 201); return { id: r.body.user.id, token: r.body.token, email }; };
-    const pair = async () => { const a = await account(), b = await account(); for (const user of [a, b])
-        await request('/api/profile', { method: 'PATCH', token: user.token, body: { display_name: user.id.slice(0, 5), birth_year: 1995, area: '東京', throat_class: 'present', purpose: 'serious', conversation_pace: 'balanced', location_scope: 'area' } }); await request('/api/likes', { method: 'POST', token: a.token, body: { toUserId: b.id } }); const match = await request('/api/likes', { method: 'POST', token: b.token, body: { toUserId: a.id } }); return { a, b, matchId: match.body.matchId }; };
-    return { sqlite, env, objects, request, account, pair, pending, ctx };
+    const photo = async (token: string) => { const result = await request('/api/captures', { method: 'POST', token, body: { dataUrl: pngData() } }); assert.equal(result.status, 201); return result.body; };
+    const pair = async () => {
+        const a = await account(), b = await account();
+        for (const user of [a, b]) {
+            await photo(user.token);
+            assert.equal((await request('/api/profile', { method: 'PATCH', token: user.token, body: { display_name: user.id.slice(0, 5), birth_year: 1995, area: '東京', throat_class: 'present', purpose: 'serious', conversation_pace: 'balanced', location_scope: 'area' } })).status, 200);
+        }
+        await request('/api/likes', { method: 'POST', token: a.token, body: { toUserId: b.id } });
+        const match = await request('/api/likes', { method: 'POST', token: b.token, body: { toUserId: a.id } });
+        return { a, b, matchId: match.body.matchId };
+    };
+    return { sqlite, env, objects, request, account, photo, pair, pending, ctx };
 }
 const pngData = () => `data:image/png;base64,${Buffer.from(encodePng({ width: 100, height: 200, data: new Uint8Array(100 * 200 * 4).fill(200) })).toString('base64')}`;
 
@@ -61,6 +70,55 @@ test('D1 image chunks preserve bytes, overwrite atomically and cascade on deleti
     await store.delete('private/test');
     assert.equal(await store.get('private/test'), null);
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM image_chunks').get()!.n, 0);
+});
+
+test('user passwords accept 9 and 128 characters and reject 8 and 129', async () => {
+    const f = fixture();
+    for (const length of [8, 9, 128, 129]) {
+        const result = await f.request('/auth/signup', { method: 'POST', body: { email: `length${length}@example.test`, password: 'a'.repeat(length) } });
+        assert.equal(result.status, length === 9 || length === 128 ? 201 : 400);
+    }
+    const user = await f.account();
+    const code = (await f.request('/auth/password/forgot', { method: 'POST', body: { email: user.email } })).body.code;
+    assert.equal((await f.request('/auth/password/reset', { method: 'POST', body: { email: user.email, code, password: '123456789' } })).status, 200);
+    const login = await f.request('/auth/login', { method: 'POST', body: { email: user.email, password: '123456789' } });
+    assert.equal(login.status, 200);
+    assert.equal((await f.request('/api/password/change', { method: 'POST', token: login.body.token, body: { password: '123456789', newPassword: '987654321' } })).status, 200);
+});
+
+test('profile save requires an owned photo and refuses again after deleting the photo', async () => {
+    const f = fixture(), user = await f.account(), other = await f.account();
+    const update = { method: 'PATCH', token: user.token, body: { display_name: 'test', birth_year: 1995, prefecture_code: '13' } };
+    await f.photo(other.token);
+    assert.equal((await f.request('/api/profile', update)).body.error, 'profile_photo_required');
+    assert.equal((await f.request('/api/me', { token: user.token })).body.profile.display_name, '');
+    assert.equal((await f.request('/api/captures', { method: 'POST', token: user.token, body: { dataUrl: 'bad' } })).status, 400);
+    assert.equal((await f.request('/api/profile', update)).status, 400);
+    const photo = await f.photo(user.token);
+    assert.equal((await f.request('/api/profile', update)).status, 200);
+    assert.ok((await f.request('/api/me', { token: user.token })).body.profile.profile_photo_capture_id);
+    await f.request(`/api/captures/${photo.id}`, { method: 'DELETE', token: user.token });
+    assert.equal((await f.request('/api/profile', update)).body.error, 'profile_photo_required');
+});
+
+test('hidden contacts exclude both directions, including future registrations and independent revocations', async () => {
+    const f = fixture(), a = await f.account(), b = await f.account();
+    const onboard = async (user: { token: string }) => {
+        await f.photo(user.token);
+        assert.equal((await f.request('/api/profile', { method: 'PATCH', token: user.token, body: { display_name: 'test', birth_year: 1995, prefecture_code: '13' } })).status, 200);
+    };
+    await onboard(a); await onboard(b);
+    const visible = async (viewer: { token: string }, other: { id: string }) => (await f.request('/api/discover?reuseUnswiped=true', { token: viewer.token })).body.candidates.some((row: any) => row.user_id === other.id);
+    assert.equal(await visible(a, b), true); assert.equal(await visible(b, a), true);
+    await f.request('/api/contacts/hide', { method: 'POST', token: a.token, body: { contacts: [b.email, ' USER2@EXAMPLE.TEST '] } });
+    assert.equal(await visible(a, b), false); assert.equal(await visible(b, a), false);
+    const future = await f.account(); await onboard(future);
+    assert.equal(await visible(a, future), false); assert.equal(await visible(future, a), false);
+    await f.request('/api/contacts/hide', { method: 'POST', token: b.token, body: { contacts: [a.email] } });
+    await f.request('/api/contacts/hide/entry', { method: 'DELETE', token: a.token, body: { contact: b.email } });
+    assert.equal(await visible(a, b), false); assert.equal(await visible(b, a), false);
+    await f.request('/api/contacts/hide', { method: 'DELETE', token: b.token });
+    assert.equal(await visible(a, b), true); assert.equal(await visible(b, a), true);
 });
 
 test('merge migration preserves existing preference filters and imports mobile settings and reads', () => {
@@ -93,7 +151,7 @@ test('mobile views retain main permissions, message contracts and pending-like f
     assert.equal(detail.status, 200);
     assert.equal(detail.body.profile.user_id, a.id);
     assert.equal(detail.body.progress.sharedAnswers, 0);
-    assert.deepEqual(detail.body.captures.map((c: any) => c.stage), [0]);
+    assert.deepEqual(detail.body.captures.map((c: any) => c.stage), [0, 0]);
     assert.equal((await f.request(`/api/matches/${matchId}`, { token: outsider.token })).status, 404);
     assert.equal((await f.request('/api/likes/received?pendingOnly=true', { token: a.token })).body.likes.length, 0);
     assert.equal((await f.request('/api/likes/received', { token: a.token })).body.likes.length, 1);
@@ -111,6 +169,7 @@ test('mobile views retain main permissions, message contracts and pending-like f
 
 test('mobile region PATCH preserves main preferences and reuse only shows undecided cards', async () => {
     const f = fixture(), a = await f.account(), b = await f.account();
+    for (const user of [a, b]) await f.photo(user.token);
     for (const user of [a, b]) await f.request('/api/profile', { token: user.token, method: 'PATCH', body: { display_name: 'test', birth_year: 1995, area: '東京', location_scope: 'area', purpose: 'serious' } });
     await f.request('/api/preferences/discovery', { token: a.token, method: 'PUT', body: { acceptedPurposes: ['serious'], acceptedPaces: ['balanced'] } });
     await f.request('/api/preferences/discovery', { token: a.token, method: 'PATCH', body: { minAge: 18, maxAge: 120, area: '東京' } });
@@ -138,11 +197,11 @@ test('cropped connect photos remain accessible with main permissions and delete 
     assert.equal((await f.request('/api/captures/connect-0/image', { token: b.token })).status, 200);
     assert.equal((await f.request('/api/captures/connect-1/image', { token: b.token })).status, 403);
     const detail = await f.request(`/api/matches/${matchId}`, { token: b.token });
-    assert.equal(detail.body.captures.length, 1);
+    assert.equal(detail.body.captures.length, 2);
     assert.equal(detail.body.profile.capture_id, 'connect-0');
     assert.equal((await f.request('/api/captures/connect-0', { token: a.token, method: 'DELETE' })).status, 200);
-    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM captures WHERE owner_id=?').get(a.id)!.n, 0);
-    assert.equal(f.objects.size, 0);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM captures WHERE owner_id=?').get(a.id)!.n, 5);
+    assert.equal(f.objects.size, 12);
 });
 test('registration has no verification gate and profile is compatible with mobile', async () => {
     const f = fixture(), a = await f.account();
@@ -163,6 +222,7 @@ test('mutual preferences, hidden locations, received likes and idempotent matchi
     await f.request('/api/profile', { method: 'PATCH', token: b.token, body: { location_scope: 'hidden' } });
     assert.equal((await f.request(`/api/profiles/${b.id}`, { token: a.token })).body.profile.area, null);
     const c = await f.account();
+    await f.photo(c.token);
     await f.request('/api/profile', { method: 'PATCH', token: c.token, body: { display_name: 'C', birth_year: 1995, purpose: 'friendship', conversation_pace: 'slow' } });
     await f.request('/api/preferences/discovery', { method: 'PUT', token: c.token, body: { acceptedPurposes: ['friendship'] } });
     assert.equal((await f.request('/api/discover', { token: a.token })).body.candidates.some((v: any) => v.user_id === c.id), false);
@@ -265,9 +325,9 @@ test('notification read and contact-hide reset, account removal deletes stored i
     await f.request('/api/contacts/hide', { method: 'DELETE', token: a.token });
     assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM contact_hides WHERE user_id=?').get(a.id)!.n, 0);
     await f.request('/api/captures', { method: 'POST', token: a.token, body: { dataUrl: pngData() } });
-    assert.equal(f.objects.size, 6);
+    assert.equal(f.objects.size, 18);
     assert.equal((await f.request('/api/account/delete', { method: 'POST', token: a.token, body: { password: 'a-valid-password' } })).status, 200);
-    assert.equal(f.objects.size, 0);
+    assert.equal(f.objects.size, 6);
     assert.equal(f.sqlite.prepare('SELECT 1 FROM users WHERE id=?').get(a.id), undefined);
 });
 test('rate limiting uses atomic increments and blocks one-sided spam', async () => {
