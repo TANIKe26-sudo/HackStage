@@ -12,7 +12,9 @@ export type AppIconName =
   | 'report'
   | 'accountDelete'
   | 'hidePeople'
-  | 'chevron';
+  | 'chevron'
+  | 'undo'
+  | 'filter';
 
 type AppIconProps = {
   name: AppIconName;
@@ -33,6 +35,8 @@ const iconNames = {
   accountDelete: 'trash-outline',
   hidePeople: 'person-remove-outline',
   chevron: 'chevron-forward-outline',
+  undo: 'arrow-undo-outline',
+  filter: 'options-outline',
 } as const;
 
 export function AppIcon({ name, size, color }: AppIconProps) {

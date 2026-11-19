@@ -54,6 +54,7 @@ export function useMainApi() {
       likes: (signal?: AbortSignal) => get<{ likes: PublicProfile[] }>('/api/likes/received?pendingOnly=true', signal),
       like: (toUserId: string) => post<{ matched: boolean; matchId?: string }>('/api/likes', { toUserId }),
       pass: (toUserId: string) => post('/api/passes', { toUserId }),
+      undoSwipe: (toUserId: string) => post<{ undone: boolean; candidateId: string; profile: PublicProfile }>('/api/swipes/undo', { toUserId }),
       matches: (signal?: AbortSignal) => get<{ matches: MatchRow[] }>('/api/matches', signal),
       match: (id: string, signal?: AbortSignal) => get<MatchDetail>(`/api/matches/${encodeURIComponent(id)}`, signal),
       messages: (id: string, signal?: AbortSignal, before?: number) => get<MessagePage>(`/api/matches/${encodeURIComponent(id)}/messages${before ? `?before=${before}` : ''}`, signal),
