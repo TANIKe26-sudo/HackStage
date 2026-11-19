@@ -53,7 +53,7 @@ export default function ResetPasswordScreen() {
   const resetPassword = async () => {
     if (inFlight.current) return;
     if (!/^\d{6}$/.test(code)) { setNotice('確認コードを半角数字6桁で入力してください。'); return; }
-    if (password.length < 12 || password.length > 128) { setNotice('パスワードは12〜128文字で入力してください。'); return; }
+    if (password.length < 9 || password.length > 128) { setNotice('パスワードは9〜128文字で入力してください。'); return; }
     if (password !== confirmation) { setNotice('確認用パスワードが一致しません。'); return; }
     inFlight.current = true;
     setBusy(true);
@@ -105,7 +105,7 @@ export default function ResetPasswordScreen() {
           <View style={styles.fields}>
             {localCode ? <Text selectable style={styles.description}>ローカル開発用コード（メール送信なし）：{localCode}</Text> : null}
             <FormField label="確認コード" placeholder="6桁の数字" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} />
-            <FormField label="新しいパスワード" placeholder="12〜128文字" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" maxLength={128} />
+            <FormField label="新しいパスワード" placeholder="9〜128文字" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" maxLength={128} />
             <FormField label="新しいパスワード（確認）" placeholder="同じパスワードを入力" value={confirmation} onChangeText={setConfirmation} secureTextEntry autoCapitalize="none" maxLength={128} />
           </View>
         ) : null}

@@ -16,6 +16,7 @@ try{
     const signup=await request('/auth/signup',{method:'POST',body:{email,password}});
     const account={...signup,email,password};accounts.push(account);
     const login=await request('/auth/login',{method:'POST',body:{email,password}});account.token=login.token;
+    await request('/api/captures',{method:'POST',token:account.token,body:{dataUrl:`data:image/png;base64,${Buffer.from(encodePng({width:100,height:200,data:new Uint8Array(100*200*4).fill(180)})).toString('base64')}`}});
     await request('/api/profile',{method:'PATCH',token:account.token,body:{display_name:`Smoke ${n}`,birth_year:1995,area:'テスト',throat_class:'present',purpose:'serious',conversation_pace:'balanced'}});
   }
   const [a,b]=accounts,png={width:100,height:200,data:new Uint8Array(100*200*4).fill(180)};

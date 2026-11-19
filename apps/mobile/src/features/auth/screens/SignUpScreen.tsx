@@ -17,6 +17,9 @@ export default function SignUpScreen() {
   const { profilePhotoUri, profilePhotoDataUrl, setProfilePhotoDataUrl, profilePhotoClassification, setProfilePhotoClassification } = useSignUpDraft();
   const { profile, token, saveProfile, logOut } = useAuth();
   const isEditingProfile = Boolean(profile?.birth_year);
+  const maskedEmail = profile?.email
+    ? `${profile.email.split('@')[0].slice(0, 2)}************`
+    : 'メールアドレスを取得できませんでした';
   const [name, setName] = useState(profile?.display_name ?? '');
   const [age, setAge] = useState(
     profile?.birth_year ? String(new Date().getFullYear() - profile.birth_year) : '',
@@ -47,6 +50,11 @@ export default function SignUpScreen() {
   const handleComplete = async () => {
     if (!token) {
       router.replace('/create-account');
+      return;
+    }
+
+    if (!profilePhotoDataUrl && !profile?.profile_photo_capture_id) {
+      setNotice('プロフィール写真をアプリ内カメラで撮影してください。写真の登録が必要です。');
       return;
     }
 
@@ -150,6 +158,14 @@ export default function SignUpScreen() {
         </View>
 
         <View style={styles.fields}>
+          {isEditingProfile ? (
+            <View style={styles.emailField}>
+              <Text style={styles.emailLabel}>登録メールアドレス（変更不可）</Text>
+              <View style={styles.emailValueBox}>
+                <Text style={styles.emailValue}>{maskedEmail}</Text>
+              </View>
+            </View>
+          ) : null}
           <FormField
             label="ユーザー名"
             placeholder="例) たろう"
@@ -193,6 +209,10 @@ export default function SignUpScreen() {
 }
 
 const styles = StyleSheet.create({
+  emailField: { gap: 7 },
+  emailLabel: { color: colors.text, fontSize: 13, fontWeight: '600' },
+  emailValueBox: { minHeight: 46, justifyContent: 'center', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface },
+  emailValue: { color: colors.mutedText, fontSize: 15 },
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,

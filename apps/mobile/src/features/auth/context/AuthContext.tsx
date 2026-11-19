@@ -90,13 +90,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const saveProfile = async (input: ProfileInput, photoDataUrl?: string | null) => {
     if (!token) throw new Error('ログイン情報がありません。もう一度ログインしてください。');
 
-    await apiRequest('/api/profile', token, { method: 'PATCH', body: JSON.stringify(input) });
     if (photoDataUrl) {
       await apiRequest('/api/captures', token, {
         method: 'POST',
         body: JSON.stringify({ dataUrl: photoDataUrl, regions: captureRegions }),
       });
     }
+
+    await apiRequest('/api/profile', token, { method: 'PATCH', body: JSON.stringify(input) });
 
     const current = await apiRequest<{ profile: AuthProfile | null }>('/api/me', token);
     setProfile(current.profile);

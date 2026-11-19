@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
   placeholder: { color: colors.mutedText },
   pressed: { opacity: 0.7 },
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(30, 24, 24, 0.38)' },
-  backdrop: { ...StyleSheet.absoluteFillObject },
+  backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   sheet: { height: '82%', backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   sheetHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
   sheetTitle: { color: colors.text, fontSize: 18, fontWeight: '700' },

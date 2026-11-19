@@ -84,7 +84,7 @@ export async function verifyPassword(password: string, stored: string) {
         d |= expected.charCodeAt(i) ^ actual.charCodeAt(i);
     return d === 0;
 }
-export function password(value: unknown) { if (typeof value !== 'string' || value.length < 12 || value.length > 128 || !value.trim())
+export function password(value: unknown) { if (typeof value !== 'string' || value.length < 9 || value.length > 128 || !value.trim())
     return fail(400, 'invalid_password'); return value; }
 export async function rate(c: Ctx, scope: string, identity: string, max: number, seconds = 900) {
     const key = await sha256(`${scope}:${identity}`), window = Math.floor(Date.now() / (seconds * 1000));

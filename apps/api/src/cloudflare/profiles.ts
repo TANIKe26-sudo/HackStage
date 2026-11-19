@@ -57,6 +57,8 @@ export function profileRoutes(app: App) {
         }
         if (!sets.length)
             fail(400, 'no_profile_fields');
+        if (!await c.env.DB.prepare("SELECT 1 FROM captures c JOIN image_objects o ON o.object_key=c.object_key WHERE c.owner_id=? AND c.stage=0 AND (c.original_key IS NOT NULL OR c.object_key LIKE 'public/%') LIMIT 1").bind(c.get('userId')).first())
+            fail(400, 'profile_photo_required');
         await c.env.DB.prepare(`UPDATE profiles SET ${sets.join(',')},updated_at=? WHERE user_id=?`).bind(...values, now(), c.get('userId')).run();
         return c.json({ ok: true });
     });
@@ -121,7 +123,8 @@ export function profileRoutes(app: App) {
       AND NOT EXISTS(SELECT 1 FROM user_limits WHERE user_id=p.user_id AND revoked_at IS NULL AND expires_at>? AND scope IN ('all','discovery'))
       AND NOT EXISTS(SELECT 1 FROM likes WHERE from_user=own.user_id AND to_user=p.user_id)
       AND (?=1 OR NOT EXISTS(SELECT 1 FROM discovery_impressions WHERE viewer_id=own.user_id AND candidate_id=p.user_id AND shown_at>?))
-      AND NOT EXISTS(SELECT 1 FROM user_contact_identifiers ci JOIN contact_hides ch ON ch.contact_hash=ci.contact_hash AND ch.user_id=own.user_id WHERE ci.user_id=p.user_id)
+      AND NOT EXISTS(SELECT 1 FROM user_contact_identifiers ci JOIN contact_hides ch ON ch.contact_hash=ci.contact_hash
+        WHERE (ch.user_id=own.user_id AND ci.user_id=p.user_id) OR (ch.user_id=p.user_id AND ci.user_id=own.user_id))
       ORDER BY exposure,COALESCE((SELECT shown_at FROM discovery_impressions WHERE viewer_id=own.user_id AND candidate_id=p.user_id),'') LIMIT ?`).bind(me, year, year, now(), reuseUnswiped, new Date(Date.now() - 86400000).toISOString(), limit).all<Row>();
         if (rows.results.length)
             await c.env.DB.batch(rows.results.map(row => c.env.DB.prepare(`INSERT INTO discovery_impressions(viewer_id,candidate_id,shown_at,impressions) VALUES(?,?,?,1) ON CONFLICT(viewer_id,candidate_id) DO UPDATE SET shown_at=excluded.shown_at,impressions=discovery_impressions.impressions+1`).bind(me, row.user_id, now())));

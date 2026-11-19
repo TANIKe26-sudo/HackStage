@@ -20,11 +20,7 @@ const locationRangeOptions: { value: LocationRange; label: string }[] = [
   { value: 'same_region', label: '同じ地方' },
   { value: 'anywhere', label: 'どこでもOK' },
 ];
-function maskEmail(email: string) {
-  const separator = email.indexOf('@');
-  const visibleLength = separator < 0 ? email.length : separator;
-  return `${email.slice(0, Math.min(3, visibleLength))}******${separator < 0 ? '' : email.slice(separator)}`;
-}
+
 function Button({ label, onPress, disabled, centered = false, primary = false }: { label: string; onPress: () => void; disabled?: boolean; centered?: boolean; primary?: boolean }) {
   return <Pressable accessibilityRole="button" disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={({ pressed }) => [styles.button, centered && styles.centeredButton, primary && styles.primaryButton, disabled && { opacity: 0.4 }, pressed && primary && styles.primaryButtonPressed]}><Text style={[styles.buttonText, primary && styles.primaryButtonText]}>{label}</Text></Pressable>;
 }
@@ -185,7 +181,7 @@ function SettingsContent({ kind }: { kind: SettingKind }) {
       <Button label="保存" centered primary disabled={busy} onPress={() => void run(async () => { await request('/api/preferences/discovery', 'PATCH', { minAge: Number(minAge), maxAge: Number(maxAge), locationRange }); }, '検索条件を保存しました')} />
     </> : null}
     {kind === 'hidePeople' ? <>
-      <Text style={styles.text}>知り合いのメールアドレスを入力してください。メールはこの端末の安全な領域に保存し、サーバーには照合用の値だけを保存して紹介候補から除外します。</Text>
+      <Text style={styles.text}>知り合いの登録メールアドレスを入力すると、お互いの「探す」に表示されなくなります。相手が後から同じメールで登録した場合も適用されます。トークやメッセージを止めるブロックとは別の機能です。入力したメールはサーバーで照合用の値に変換して保存し、この端末にも安全に保存します。</Text>
       <Field label="非表示にするメールアドレス" value={contacts} onChange={setContacts} />
       <Button label="非表示に追加" centered primary={!busy && hiddenEmailsLoaded && contactEntries.length > 0} disabled={busy || !hiddenEmailsLoaded || !contactEntries.length} onPress={() => void run(async () => {
         const nextEmails = [...new Set([...hiddenEmails, ...contactEntries])];
@@ -200,10 +196,10 @@ function SettingsContent({ kind }: { kind: SettingKind }) {
         {!hiddenEmailsLoaded ? <Text style={styles.text}>読み込み中…</Text> : null}
         {hiddenEmailsLoaded && hiddenEmails.length ? hiddenEmails.map(email => (
           <View key={email} style={styles.hiddenEmailRow}>
-            <Text numberOfLines={1} style={styles.hiddenEmail}>{maskEmail(email)}</Text>
+            <Text style={styles.hiddenEmail}>{email}</Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`${maskEmail(email)}の非表示設定を解除`}
+              accessibilityLabel={`${email}の非表示設定を解除`}
               disabled={busy}
               onPress={() => void run(async () => {
                 const result = await request<{ removed: boolean }>('/api/contacts/hide/entry', 'DELETE', { contact: email });
