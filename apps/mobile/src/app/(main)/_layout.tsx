@@ -1,5 +1,5 @@
 import { useAuth } from '../../features/auth/context/AuthContext';
-import { isProfileReady } from '../../features/auth/api/client';
+import { isProfileReady, needsEmailVerification } from '../../features/auth/api/client';
 import { Redirect, Stack } from 'expo-router';
 import { ActivityIndicator, Platform, View } from 'react-native';
 
@@ -9,6 +9,7 @@ export default function MainLayout() {
   const { token, profile, isRestoring } = useAuth();
   if (isRestoring) return <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>;
   if (!token) return <Redirect href="/" />;
+  if (needsEmailVerification(profile)) return <Redirect href="/verify-email" />;
   if (!isProfileReady(profile)) return <Redirect href="/sign-up" />;
   return (
     <Stack screenOptions={{ headerShown: false, animation: 'none' }}>

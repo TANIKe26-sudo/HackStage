@@ -1,3 +1,5 @@
+import { usesAppwrite } from './appwrite.js';
+import { providerAuth } from './appwrite-auth.js';
 import { audit, configured, contactHash, fail, hashPassword, id, input, ip, now, password, rate, text, tokenHash, verifyPassword, type App, type Ctx, type Env, type Row } from './core.js';
 function email(value: unknown) {
     const result = text(value, 254, true).toLowerCase();
@@ -43,6 +45,7 @@ async function issueCode(c: Ctx, user: Row, kind: 'verify' | 'reset') {
 }
 export function authRoutes(app: App) {
     app.post('/auth/signup', async (c) => {
+        if (usesAppwrite(c.env)) return providerAuth.signup(c);
         if (!configured(c.env))
             fail(503, 'server_auth_not_configured');
         const body = await input(c), address = email(body.email), secret = password(body.password);
@@ -68,6 +71,7 @@ export function authRoutes(app: App) {
         return c.json(await session(c, user, body.deviceName), 201);
     });
     app.post('/auth/login', async (c) => {
+        if (usesAppwrite(c.env)) return providerAuth.login(c);
         if (!configured(c.env))
             fail(503, 'server_auth_not_configured');
         const body = await input(c), address = email(body.email), secret = typeof body.password === 'string' && body.password.length <= 128 ? body.password : '';
@@ -80,11 +84,13 @@ export function authRoutes(app: App) {
         return c.json(await session(c, user, body.deviceName));
     });
     app.post('/auth/logout', async (c) => {
+        if (usesAppwrite(c.env)) return providerAuth.logout(c);
         const token = c.req.header('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
         await c.env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await tokenHash(c.env, token)).run();
         return c.json({ ok: true });
     });
     app.post('/auth/password/forgot', async (c) => {
+        if (usesAppwrite(c.env)) return providerAuth.forgot(c);
         const body = await input(c), address = email(body.email);
         await rate(c, 'reset-ip', ip(c), 10);
         await rate(c, 'reset-email', address, 3);
@@ -95,6 +101,7 @@ export function authRoutes(app: App) {
         return c.json({ ok: true, message: '登録がある場合は再設定コードを送信します。', ...(localMail(c) ? delivery : {}) });
     });
     app.post('/auth/password/reset', async (c) => {
+        if (usesAppwrite(c.env)) return providerAuth.reset(c);
         const body = await input(c), address = email(body.email), code = text(body.code, 6, true), secret = password(body.password);
         await rate(c, 'reset-code-ip', ip(c), 20);
         await rate(c, 'reset-code', address, 5);
@@ -110,12 +117,14 @@ export function authRoutes(app: App) {
         return c.json({ ok: true });
     });
     app.post('/api/email/verification', async (c) => {
+        if (usesAppwrite(c.env)) return providerAuth.sendVerification(c);
         const me = c.get('userId');
         await rate(c, 'verify-email', me, 3);
         const user = await c.env.DB.prepare('SELECT id,email FROM users WHERE id=?').bind(me).first<Row>();
         return c.json({ ok: true, ...await issueCode(c, user!, 'verify') });
     });
     app.post('/api/email/confirm', async (c) => {
+        if (usesAppwrite(c.env)) return providerAuth.confirmVerification(c);
         const body = await input(c), me = c.get('userId'), code = text(body.code, 6, true);
         await rate(c, 'verify-code', me, 5);
         const action = await c.env.DB.prepare("DELETE FROM email_actions WHERE token_hash=? AND user_id=? AND kind='verify' AND expires_at>? RETURNING user_id").bind(await tokenHash(c.env, `verify:${me}:${code}`), me, now()).first();
@@ -125,6 +134,7 @@ export function authRoutes(app: App) {
         return c.json({ ok: true });
     });
     app.post('/api/password/change', async (c) => {
+        if (usesAppwrite(c.env)) return providerAuth.changePassword(c);
         const body = await input(c), secret = password(body.newPassword), me = c.get('userId');
         await rate(c, 'password-change', me, 5);
         const credential = await c.env.DB.prepare('SELECT password_hash FROM password_credentials WHERE user_id=?').bind(me).first<Row>();
@@ -142,8 +152,9 @@ export function authRoutes(app: App) {
         return c.json({ sessions: rows.results.map(r => ({ id: r.token_hash.slice(0, 24), deviceName: r.device_name, createdAt: r.created_at, lastUsedAt: r.last_used_at, expiresAt: r.expires_at })) });
     });
     app.delete('/api/sessions/:id', async (c) => {
+        if (usesAppwrite(c.env)) return providerAuth.revokeSessions(c);
         await c.env.DB.prepare('DELETE FROM sessions WHERE user_id=? AND substr(token_hash,1,24)=?').bind(c.get('userId'), c.req.param('id')).run();
         return c.json({ revoked: true });
     });
-    app.delete('/api/sessions', async (c) => { await c.env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(c.get('userId')).run(); return c.json({ revoked: true }); });
+    app.delete('/api/sessions', async (c) => { if (usesAppwrite(c.env)) return providerAuth.revokeSessions(c); await c.env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(c.get('userId')).run(); return c.json({ revoked: true }); });
 }

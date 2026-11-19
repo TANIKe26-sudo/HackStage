@@ -9,12 +9,13 @@ import { AuthButton } from '../components/AuthButton';
 import { FormField } from '../components/FormField';
 import { colors, spacing } from '../../../theme/tokens';
 
-type Delivery = { delivery?: string; code?: string };
+type Delivery = { delivery?: string; code?: string; userId?: string };
 
 export default function ResetPasswordScreen() {
   const [step, setStep] = useState<'email' | 'code' | 'done'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
+  const [recoveryUserId, setRecoveryUserId] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [localCode, setLocalCode] = useState('');
@@ -37,11 +38,12 @@ export default function ResetPasswordScreen() {
       const result = await apiRequest<Delivery>('/auth/password/forgot', undefined, {
         method: 'POST', body: JSON.stringify({ email: address }),
       });
+      setRecoveryUserId(result.userId ?? '');
       setEmail(address);
       setCode('');
       setStep('code');
       if (__DEV__ && result.delivery === 'local' && /^\d{6}$/.test(result.code ?? '')) setLocalCode(result.code!);
-      setNotice('登録がある場合は再設定コードを送信します。コードは15分間有効です。再送信した場合は最新のコードを入力してください。');
+      setNotice('登録がある場合は再設定コードを送信します。コードは15分間有効です。届いたコードを入力してください。');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'コードの送信に失敗しました。');
     } finally {
@@ -60,7 +62,7 @@ export default function ResetPasswordScreen() {
     setNotice('');
     try {
       await apiRequest('/auth/password/reset', undefined, {
-        method: 'POST', body: JSON.stringify({ email, code, password }),
+        method: 'POST', body: JSON.stringify({ email, code, password, userId: recoveryUserId }),
       });
       setPassword(''); setConfirmation(''); setCode(''); setLocalCode('');
       setStep('done');
@@ -116,7 +118,7 @@ export default function ResetPasswordScreen() {
         {step === 'code' ? <>
           <AuthButton variant="outline" label="確認コードを再送信" disabled={busy} onPress={sendCode} />
           <Pressable accessibilityRole="button" disabled={busy} style={styles.switchButton} onPress={() => {
-            setStep('email'); setCode(''); setPassword(''); setConfirmation(''); setLocalCode(''); setNotice('');
+            setStep('email'); setRecoveryUserId(''); setCode(''); setPassword(''); setConfirmation(''); setLocalCode(''); setNotice('');
           }}><Text style={styles.switchText}><Text style={styles.switchLinkText}>メールアドレスを変更する</Text></Text></Pressable>
         </> : null}
       </ScrollView>

@@ -11,6 +11,7 @@ export type AuthProfile = {
   conversation_pace: string | null;
   throat_class: 'present' | 'absent' | 'pending';
   email_verified?: number;
+  email_verification_required?: boolean;
   user_id: string;
   location_scope: 'hidden' | 'area' | 'meetup';
   profile_photo_capture_id?: string | null;
@@ -23,6 +24,11 @@ export class ApiError extends Error {
 }
 
 const errorMessages: Record<string, string> = {
+  appwrite_not_configured: 'Appwriteの接続設定またはAPIキーの権限を確認してください。',
+  auth_service_unavailable: '認証サービスに接続できませんでした。しばらくしてからお試しください。',
+  email_verification_required: 'メールアドレスの確認を完了してください。',
+  auth_migration_required: '既存アカウントの移行を完了できませんでした。運営にお問い合わせください。',
+  password_policy_rejected: '認証サービスのパスワード条件を満たしていません。別のパスワードをお試しください。',
   profile_photo_required: 'プロフィール写真が必要です。アプリ内カメラで撮影してください。',
   invalid_or_expired_code: '確認コードが正しくないか、有効期限が切れています。コードを確認するか、再送信してください。',
   mail_not_configured: 'メール送信がまだ設定されていません。運営にお問い合わせください。',
@@ -109,4 +115,11 @@ export async function apiRequest<T extends object = Record<string, unknown>>(
 
 export function isProfileReady(profile?: AuthProfile | null) {
   return Boolean(profile?.display_name?.trim() && profile.birth_year && profile.area?.trim() && profile.profile_photo_capture_id);
+}
+
+export function needsEmailVerification(profile?: AuthProfile | null) {
+  return profile?.email_verification_required === true && profile.email_verified !== 1;
+}
+export function authDestination(profile?: AuthProfile | null) {
+  return needsEmailVerification(profile) ? '/verify-email' : isProfileReady(profile) ? '/discover' : '/sign-up';
 }

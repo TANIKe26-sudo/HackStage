@@ -7,8 +7,14 @@ ADMIN_SAFETY_KEY=replace-me
 ADMIN_USERS_KEY=replace-me
 ADMIN_CONTENT_KEY=replace-me
 ADMIN_AUDIT_KEY=replace-me
-MAIL_MODE=local
-# Production: leave MAIL_MODE unset, then configure these secrets to send mail.
+AUTH_PROVIDER=appwrite
+APPWRITE_ENDPOINT=https://sgp.cloud.appwrite.io/v1
+APPWRITE_PROJECT_ID=6afe98140007431a2096
+# Server-only. Required scopes: sessions.write, users.read, users.write
+APPWRITE_API_KEY=
+# Legacy test mode only: AUTH_PROVIDER=local and MAIL_MODE=local.
+# Production always requires Appwrite even if AUTH_PROVIDER=local is set.
+# Optional legacy mail integration (not used by Appwrite authentication):
 RESEND_API_KEY=
 MAIL_FROM=
 # Optional webhook for failures in scheduled background processing.

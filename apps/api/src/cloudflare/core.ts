@@ -16,6 +16,10 @@ export interface Env {
     MAIL_MODE?: string;
     OPERATIONS_WEBHOOK_URL?: string;
     APP_ENV?: string;
+    AUTH_PROVIDER?: string;
+    APPWRITE_ENDPOINT?: string;
+    APPWRITE_PROJECT_ID?: string;
+    APPWRITE_API_KEY?: string;
     AI?: {
         run(model: string, input: Record<string, unknown>): Promise<unknown>;
     };
@@ -137,12 +141,14 @@ export async function authenticate(c: Ctx) {
     const token = c.req.header('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
     if (!token || token.length > 300)
         return fail(401, 'unauthorized');
-    const row = await c.env.DB.prepare('SELECT u.id,u.status FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').bind(await tokenHash(c.env, token), now()).first<Row>();
+    const row = await c.env.DB.prepare('SELECT u.id,u.status,u.email,u.appwrite_id,s.appwrite_secret_cipher FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').bind(await tokenHash(c.env, token), now()).first<Row>();
     if (!row)
         return fail(401, 'unauthorized');
     const appealOrExit = /^\/api\/(appeals(?:\/|$)|restrictions$|sessions(?:\/|$)|account(?:\/delete)?$)/.test(c.req.path);
     if (row.status !== 'active' && !appealOrExit)
         fail(403, 'account_unavailable');
+    const { usesAppwrite, validateProviderSession } = await import('./appwrite.js');
+    if (usesAppwrite(c.env)) await validateProviderSession(c, row);
     c.set('userId', row.id);
     await c.env.DB.prepare('UPDATE sessions SET last_used_at=? WHERE token_hash=?').bind(now(), await tokenHash(c.env, token)).run();
 }

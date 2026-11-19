@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AuthButton } from '../components/AuthButton';
 import { FormField } from '../components/FormField';
-import { isProfileReady } from '../api/client';
+import { authDestination } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../../../theme/tokens';
 
@@ -43,11 +43,11 @@ export default function EmailAuthScreen({ mode }: EmailAuthScreenProps) {
     setNotice('');
     try {
       if (isSignup) {
-        await createAccount(normalizedEmail, password);
-        router.replace('/sign-up');
+        const profile = await createAccount(normalizedEmail, password);
+        router.replace(authDestination(profile));
       } else {
         const profile = await logIn(normalizedEmail, password);
-        router.replace(isProfileReady(profile) ? '/discover' : '/sign-up');
+        router.replace(authDestination(profile));
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '認証に失敗しました。');

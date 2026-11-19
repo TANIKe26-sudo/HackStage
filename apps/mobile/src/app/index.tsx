@@ -2,7 +2,7 @@ import { Redirect } from 'expo-router';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { isProfileReady } from '../features/auth/api/client';
+import { authDestination } from '../features/auth/api/client';
 import { useAuth } from '../features/auth/context/AuthContext';
 import EmailAuthScreen from '../features/auth/screens/EmailAuthScreen';
 import { colors } from '../theme/tokens';
@@ -20,7 +20,7 @@ export default function IndexRoute() {
     );
   }
   if (token) {
-    return <Redirect href={isProfileReady(profile) ? '/discover' : '/sign-up'} />;
+    return <Redirect href={authDestination(profile)} />;
   }
 
   return <EmailAuthScreen mode="login" />;

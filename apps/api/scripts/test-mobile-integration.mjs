@@ -24,7 +24,8 @@ let ownedTopic;
 let checks = 0;
 function checked(label) { console.log(`PASS ${++checks}: ${label}`); }
 try {
-  await request('/health/ready');
+  const readiness = await request('/health/ready');
+  assert.equal(readiness.authProvider, 'local', 'This legacy test uses fake emails. Run a separate development API with AUTH_PROVIDER=local; never send these accounts to Appwrite.');
   for (let i = 0; i < 3; i++) {
     const email = `integration-${randomUUID()}@example.invalid`;
     const account = await request('/auth/signup', null, 'POST', { email, password }, 201);
