@@ -37,6 +37,7 @@ export default function MatchesScreen() {
   };
 
   const handleTabPress = (tab: MainTabId) => {
+    if (tab === 'home') router.replace('/home');
     if (tab === 'search') router.replace('/discover');
     if (tab === 'likes') router.replace('/likes');
     if (tab === 'profile') router.replace('/profile');

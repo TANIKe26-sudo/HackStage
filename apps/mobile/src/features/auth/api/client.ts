@@ -46,6 +46,7 @@ const errorMessages: Record<string, string> = {
   maintenance: '現在メンテナンス中です。しばらくしてからお試しください。',
   request_too_large: '送信する画像が大きすぎます。アプリ内カメラで撮り直してください。',
   invalid_preferences: '年齢の範囲を18〜120歳で指定してください。',
+  invalid_hobbies: '趣味を選び直してください。',
   invalid_location_range: 'マッチング範囲を選び直してください。',
   invalid_prefecture: '都道府県を選び直してください。',
   prefecture_required: '同じ都道府県・同じ地方で探すには、プロフィールに都道府県を設定してください。',
@@ -123,5 +124,5 @@ export function needsEmailVerification(profile?: AuthProfile | null) {
   return profile?.email_verification_required === true && profile.email_verified !== 1;
 }
 export function authDestination(profile?: AuthProfile | null) {
-  return needsEmailVerification(profile) ? '/verify-email' : isProfileReady(profile) ? '/discover' : '/sign-up';
+  return needsEmailVerification(profile) ? '/verify-email' : isProfileReady(profile) ? '/home' : '/sign-up';
 }

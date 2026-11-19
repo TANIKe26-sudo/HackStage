@@ -1,0 +1,26 @@
+export const hobbyGenres = [
+  { id: 'food', label: '料理・グルメ', icon: 'restaurant-outline' },
+  { id: 'music', label: '音楽', icon: 'musical-notes-outline' },
+  { id: 'travel', label: '旅行', icon: 'airplane-outline' },
+  { id: 'manga-anime', label: '漫画・アニメ', icon: 'book-outline' },
+  { id: 'sports', label: 'スポーツ', icon: 'barbell-outline' },
+  { id: 'alcohol', label: 'お酒', icon: 'wine-outline' },
+  { id: 'movies', label: '映画', icon: 'film-outline' },
+  { id: 'animals', label: '動物', icon: 'paw-outline' },
+  { id: 'fashion-beauty', label: 'ファッション・美容', icon: 'shirt-outline' },
+  { id: 'leisure', label: 'レジャー・スポット', icon: 'ticket-outline' },
+  { id: 'games', label: 'ゲーム', icon: 'game-controller-outline' },
+  { id: 'outdoors', label: 'アウトドア', icon: 'leaf-outline' },
+  { id: 'vehicles', label: '車・バイク・乗り物', icon: 'car-outline' },
+  { id: 'comedy', label: 'お笑い', icon: 'happy-outline' },
+  { id: 'shows', label: '動画・番組', icon: 'tv-outline' },
+  { id: 'lifestyle', label: '生活', icon: 'home-outline' },
+  { id: 'art', label: 'アート', icon: 'color-palette-outline' },
+  { id: 'books', label: '本', icon: 'library-outline' },
+  { id: 'technology', label: 'インターネット・機械', icon: 'laptop-outline' },
+  { id: 'diy', label: 'DIY・ものづくり', icon: 'hammer-outline' },
+  { id: 'celebrities', label: '有名人', icon: 'star-outline' },
+  { id: 'learning', label: '勉強・習い事', icon: 'school-outline' },
+] as const;
+
+export type HobbyGenreId = (typeof hobbyGenres)[number]['id'];

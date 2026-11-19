@@ -6,7 +6,7 @@ import { AppIcon, type AppIconName } from './AppIcon';
 type ProfileSettingRowProps = {
   icon: Extract<
     AppIconName,
-    'profileEdit' | 'visibility' | 'calendar' | 'location' | 'report' | 'accountDelete' | 'hidePeople'
+    'visibility' | 'calendar' | 'location' | 'hobbies' | 'report' | 'accountDelete' | 'hidePeople'
   >;
   label: string;
   onPress: () => void;

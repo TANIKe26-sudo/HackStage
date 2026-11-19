@@ -41,6 +41,7 @@ export default function LikesReceivedScreen() {
   };
 
   const handleTabPress = (tab: MainTabId) => {
+    if (tab === 'home') router.replace('/home');
     if (tab === 'search') router.replace('/discover');
     if (tab === 'chat') router.replace('/matches');
     if (tab === 'profile') router.replace('/profile');

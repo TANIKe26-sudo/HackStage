@@ -90,7 +90,7 @@ export default function SignUpScreen() {
       );
       setProfilePhotoDataUrl(null);
       setProfilePhotoClassification(null);
-      router.replace('/discover');
+      router.replace('/home');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'プロフィールを保存できませんでした。');
     } finally {
@@ -98,34 +98,37 @@ export default function SignUpScreen() {
     }
   };
 
+  const header = (
+    <View style={[styles.header, styles.fixedHeader, isEditingProfile && styles.profileEditHeader]}>
+      <Pressable
+        accessibilityLabel="前の画面へ戻る"
+        accessibilityRole="button"
+        disabled={busy}
+        onPress={handleBack}
+        style={[styles.backButton, isEditingProfile && styles.profileEditBackButton]}
+      >
+        {isEditingProfile ? (
+          <Ionicons name="chevron-back" size={25} color={colors.mutedText} />
+        ) : (
+          <Text style={styles.backLabel}>‹</Text>
+        )}
+      </Pressable>
+      <Text style={[styles.title, isEditingProfile && styles.profileEditTitle]}>
+        {isEditingProfile ? 'プロフィール編集' : '新規登録'}
+      </Text>
+      <View style={styles.headerSpacer} />
+    </View>
+  );
+
   if (token && needsEmailVerification(profile)) return <Redirect href="/verify-email" />;
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      {header}
       <ScrollView
-        contentContainerStyle={[styles.content, isEditingProfile && styles.profileEditContent]}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={[styles.header, isEditingProfile && styles.profileEditHeader]}>
-          <Pressable
-            accessibilityLabel="前の画面へ戻る"
-            accessibilityRole="button"
-            disabled={busy}
-            onPress={handleBack}
-            style={[styles.backButton, isEditingProfile && styles.profileEditBackButton]}
-          >
-            {isEditingProfile ? (
-              <Ionicons name="chevron-back" size={25} color={colors.mutedText} />
-            ) : (
-              <Text style={styles.backLabel}>‹</Text>
-            )}
-          </Pressable>
-          <Text style={[styles.title, isEditingProfile && styles.profileEditTitle]}>
-            {isEditingProfile ? 'プロフィール編集' : '新規登録'}
-          </Text>
-          <View style={styles.headerSpacer} />
-        </View>
-
         <Text style={styles.sectionTitle}>基本情報</Text>
 
         <View style={styles.photoCard}>
@@ -223,11 +226,8 @@ const styles = StyleSheet.create({
   content: {
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
-  },
-  profileEditContent: {
-    paddingTop: 0,
   },
   header: {
     minHeight: 42,
@@ -236,11 +236,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
   },
-  profileEditHeader: {
+  fixedHeader: {
     height: 54,
     minHeight: 54,
+    marginBottom: 0,
+    paddingHorizontal: spacing.lg,
+  },
+  profileEditHeader: {
     justifyContent: 'flex-start',
-    marginHorizontal: -8,
+    paddingHorizontal: spacing.md,
   },
   backButton: {
     width: 36,

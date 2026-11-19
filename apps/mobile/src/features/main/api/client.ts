@@ -49,8 +49,11 @@ export function useMainApi() {
   return useMemo(() => {
     const get = <T extends object>(path: string, signal?: AbortSignal) => apiRequest<T>(path, token ?? undefined, { signal });
     const post = <T extends object>(path: string, body: object) => apiRequest<T>(path, token ?? undefined, { method: 'POST', body: JSON.stringify(body) });
+    const put = <T extends object>(path: string, body: object) => apiRequest<T>(path, token ?? undefined, { method: 'PUT', body: JSON.stringify(body) });
     return {
-      discover: (signal?: AbortSignal) => get<{ candidates: PublicProfile[]; notice: string | null }>('/api/discover?reuseUnswiped=true', signal),
+      discover: (signal?: AbortSignal, hobbyId?: string) => get<{ candidates: PublicProfile[]; notice: string | null }>(`/api/discover?reuseUnswiped=true${hobbyId ? `&hobby=${encodeURIComponent(hobbyId)}` : ''}`, signal),
+      ownHobbies: (signal?: AbortSignal) => get<{ hobbies: string[] }>('/api/profile/hobbies', signal),
+      saveOwnHobbies: (hobbies: string[]) => put('/api/profile/hobbies', { hobbies }),
       likes: (signal?: AbortSignal) => get<{ likes: PublicProfile[] }>('/api/likes/received?pendingOnly=true', signal),
       like: (toUserId: string) => post<{ matched: boolean; matchId?: string }>('/api/likes', { toUserId }),
       pass: (toUserId: string) => post('/api/passes', { toUserId }),

@@ -10,11 +10,13 @@ import { useMainApi, type MatchRow } from '../api/client';
 import { colors, spacing } from '../../../theme/tokens';
 import { RequestState } from './RequestState';
 import { MatchSelectorRow } from './MatchSelectorRow';
+import { HobbyGenreGrid } from './HobbyGenreGrid';
+import type { HobbyGenreId } from '../data/hobbyGenres';
 
-export type SettingKind = 'visibility' | 'calendar' | 'location' | 'report' | 'hidePeople' | 'accountDelete';
+export type SettingKind = 'visibility' | 'calendar' | 'location' | 'hobbies' | 'report' | 'hidePeople' | 'accountDelete';
 type Plan = { id: string; startsAt: string | null; placeLabel: string | null; revision: number; exactLocation: string | null; status: string; confirmed: { you: boolean; other: boolean }; arrived: { you: string | null; other: string | null } };
 type LocationRange = 'same_prefecture' | 'same_region' | 'anywhere';
-const titles: Record<SettingKind, string> = { visibility: '公開範囲', calendar: '待ち合わせ予定', location: 'マッチング範囲', report: '通報・ブロック', hidePeople: '知り合いを非表示', accountDelete: 'アカウント削除' };
+const titles: Record<SettingKind, string> = { visibility: '公開範囲', calendar: '待ち合わせ予定', location: 'マッチング範囲', hobbies: '趣味を設定', report: '通報・ブロック', hidePeople: '知り合いを非表示', accountDelete: 'アカウント削除' };
 const locationRangeOptions: { value: LocationRange; label: string }[] = [
   { value: 'same_prefecture', label: '同じ都道府県' },
   { value: 'same_region', label: '同じ地方' },
@@ -43,6 +45,7 @@ function SettingsContent({ kind }: { kind: SettingKind }) {
   const [pace, setPace] = useState(profile?.conversation_pace ?? 'balanced');
   const [minAge, setMinAge] = useState('18'), [maxAge, setMaxAge] = useState('120');
   const [locationRange, setLocationRange] = useState<LocationRange | null>(null);
+  const [ownHobbies, setOwnHobbies] = useState<string[]>([]);
   const [contacts, setContacts] = useState(''), [password, setPassword] = useState('');
   const [matches, setMatches] = useState<MatchRow[]>([]), [selected, setSelected] = useState<string | null>(null);
   const [matchSearch, setMatchSearch] = useState('');
@@ -72,8 +75,9 @@ function SettingsContent({ kind }: { kind: SettingKind }) {
     setHiddenEmails(emails);
   };
   const load = useCallback(async (signal?: AbortSignal) => {
-    const result: { preferences?: { minAge: number; maxAge: number; locationRange: LocationRange | null }; matches?: MatchRow[]; blocks?: { user_id: string; display_name: string }[]; hiddenContactCount?: number } = {};
+    const result: { preferences?: { minAge: number; maxAge: number; locationRange: LocationRange | null }; hobbies?: string[]; matches?: MatchRow[]; blocks?: { user_id: string; display_name: string }[]; hiddenContactCount?: number } = {};
     if (kind === 'location') result.preferences = (await request<{ preferences: NonNullable<typeof result.preferences> }>('/api/preferences/discovery', 'GET', undefined, signal)).preferences;
+    if (kind === 'hobbies') result.hobbies = (await api.ownHobbies(signal)).hobbies;
     if (kind === 'report' || kind === 'calendar') result.matches = (await api.matches(signal)).matches;
     if (kind === 'report') result.blocks = (await request<{ blocks: NonNullable<typeof result.blocks> }>('/api/blocks', 'GET', undefined, signal)).blocks;
     if (kind === 'hidePeople') result.hiddenContactCount = (await request<{ count: number }>('/api/contacts/hide', 'GET', undefined, signal)).count;
@@ -81,6 +85,7 @@ function SettingsContent({ kind }: { kind: SettingKind }) {
   }, [api, kind, request]);
   const apply = useCallback((result: Awaited<ReturnType<typeof load>>) => {
     if (result.preferences) { setMinAge(String(result.preferences.minAge)); setMaxAge(String(result.preferences.maxAge)); setLocationRange(result.preferences.locationRange); }
+    if (result.hobbies) setOwnHobbies(result.hobbies);
     if (result.matches) setMatches(result.matches);
     if (result.blocks) setBlocks(result.blocks);
     if (result.hiddenContactCount !== undefined) setHiddenContactCount(result.hiddenContactCount);
@@ -173,6 +178,15 @@ function SettingsContent({ kind }: { kind: SettingKind }) {
         <Text style={styles.text}>同じ都道府県・同じ地方で探すには、プロフィールから都道府県の設定をしてください。<Text accessibilityRole="link" onPress={() => router.push('/sign-up')} style={styles.linkText}>設定する</Text></Text>
       </> : null}
       <Button label="保存" centered primary disabled={busy} onPress={() => void run(async () => { await request('/api/preferences/discovery', 'PATCH', { minAge: Number(minAge), maxAge: Number(maxAge), locationRange }); }, '検索条件を保存しました')} />
+    </> : null}
+    {kind === 'hobbies' ? <>
+      <Text style={styles.text}>自分の好きな趣味を選択してください。選択内容は、相手が趣味で探すときの条件に使われます。</Text>
+      <HobbyGenreGrid
+        selectedIds={ownHobbies}
+        disabled={busy}
+        onToggle={(id: HobbyGenreId) => setOwnHobbies(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])}
+      />
+      <Button label="保存" centered primary disabled={busy} onPress={() => void run(async () => { await api.saveOwnHobbies(ownHobbies); }, '趣味を保存しました')} />
     </> : null}
     {kind === 'hidePeople' ? <>
       <Text style={styles.text}>知り合いの登録メールアドレスを入力すると、お互いの「探す」に表示されなくなります。相手が後から同じメールで登録した場合も適用されます。トークやメッセージを止めるブロックとは別の機能です。入力したメールはサーバーで照合用の値に変換して保存し、この端末にも安全に保存します。</Text>
