@@ -3,10 +3,16 @@
   "name": "nodobito-api",
   "main": "src/cloudflare.ts",
   "compatibility_date": "2026-11-17",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": true,
-  "observability": { "enabled": true },
-  "vars": { "APP_ENV": "development" },
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "APP_ENV": "development"
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -15,16 +21,19 @@
       "migrations_dir": "migrations"
     }
   ],
-  "r2_buckets": [
-    { "binding": "CAPTURES", "bucket_name": "nodobito-private-captures" }
-  ],
-  "triggers": { "crons": ["*/5 * * * *"] },
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  },
   "env": {
     "production": {
       "name": "nodobito-api",
       "account_id": "94525e870e53136c86279f0a75bc70b6",
       "workers_dev": true,
-      "vars": { "APP_ENV": "production" },
+      "vars": {
+        "APP_ENV": "production"
+      },
       "d1_databases": [
         {
           "binding": "DB",
@@ -33,9 +42,9 @@
           "migrations_dir": "migrations"
         }
       ],
-      "r2_buckets": [
-        { "binding": "CAPTURES", "bucket_name": "nodobito-private-captures" }
-      ]
+      "ai": {
+        "binding": "AI"
+      }
     }
   }
 }

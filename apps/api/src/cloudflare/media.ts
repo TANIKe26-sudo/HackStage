@@ -1,4 +1,5 @@
 import { classifyNeck } from './classification.js';
+import { imageStore } from './image-store.js';
 import { Buffer } from 'node:buffer';
 import * as jpeg from 'jpeg-js';
 import { decode as decodePng, convertIndexedToRgb } from 'fast-png';
@@ -127,12 +128,12 @@ export function mediaRoutes(app: App) {
         }[] = [];
         const stored: string[] = [];
         try {
-            await c.env.CAPTURES.put(original, decoded.bytes, { httpMetadata: { contentType: decoded.type, cacheControl: 'private, no-store' } });
+            await imageStore(c.env).put(original, crop(decoded.image, { x: 0, y: 0, width: 1, height: 1 }), { httpMetadata: { contentType: 'image/jpeg', cacheControl: 'private, no-store' } });
             stored.push(original);
             const statements: D1PreparedStatement[] = [];
             for (let stage = 0; stage < 5; stage++) {
                 const captureId = id(), key = `${c.get('userId')}/variants/${group}/${stage}.jpg`, bytes = crop(decoded.image, boxes[stage]);
-                await c.env.CAPTURES.put(key, bytes, { httpMetadata: { contentType: 'image/jpeg', cacheControl: 'private, no-store' } });
+                await imageStore(c.env).put(key, bytes, { httpMetadata: { contentType: 'image/jpeg', cacheControl: 'private, no-store' } });
                 stored.push(key);
                 created.push({ id: captureId, stage });
                 statements.push(c.env.DB.prepare('INSERT INTO captures(id,owner_id,stage,object_key,media_type,created_at,original_key,regions) VALUES(?,?,?,?,?,?,?,?)').bind(captureId, c.get('userId'), stage, key, 'image/jpeg', time, original, JSON.stringify(boxes)));
@@ -140,7 +141,7 @@ export function mediaRoutes(app: App) {
             await c.env.DB.batch(statements);
         }
         catch (e) {
-            await c.env.CAPTURES.delete(stored);
+            await imageStore(c.env).delete(stored);
             throw e;
         }
         return c.json({ id: created[0].id, stage: 0, captures: created, regions: boxes, previewRequired: true }, 201);
@@ -161,7 +162,7 @@ export function mediaRoutes(app: App) {
         if (!row)
             return fail(404, 'not_found');
         await mayView(c, row);
-        const object = await c.env.CAPTURES.get(row.object_key);
+        const object = await imageStore(c.env).get(row.object_key);
         if (!object)
             return fail(404, 'not_found');
         await c.env.DB.prepare('INSERT INTO image_access_logs(id,capture_id,viewer_id,accessed_at) VALUES(?,?,?,?)').bind(id(), row.id, c.get('userId'), now()).run();
@@ -179,7 +180,7 @@ export function mediaRoutes(app: App) {
             return fail(404, 'not_found');
         const siblings = row.original_key ? await c.env.DB.prepare('SELECT id,object_key FROM captures WHERE original_key=? AND owner_id=?').bind(row.original_key, c.get('userId')).all<Row>()
             : /^public\/[^/]+\/[^/]+\/[0-4]$/.test(row.object_key) ? await c.env.DB.prepare('SELECT id,object_key FROM captures WHERE owner_id=? AND object_key IN (?,?,?,?,?)').bind(c.get('userId'), ...Array.from({ length: 5 }, (_, stage) => row.object_key.replace(/\/[0-4]$/, `/${stage}`))).all<Row>() : { results: [row] };
-        await c.env.CAPTURES.delete([...siblings.results.map(r => r.object_key), ...(row.original_key ? [row.original_key] : [])]);
+        await imageStore(c.env).delete([...siblings.results.map(r => r.object_key), ...(row.original_key ? [row.original_key] : [])]);
         await c.env.DB.batch(siblings.results.map(r => c.env.DB.prepare('DELETE FROM captures WHERE id=?').bind(r.id)));
         await audit(c.env, 'capture_deleted', c.get('userId'), row.id);
         return c.json({ deleted: true });
@@ -221,7 +222,7 @@ export function mediaRoutes(app: App) {
             return fail(404, 'not_found');
         if (!row.original_key && !String(row.object_key).startsWith('public/')) fail(400, 'classification_requires_neck_crop');
         await limited(c, 'posting');
-        const image = await c.env.CAPTURES.get(row.object_key);
+        const image = await imageStore(c.env).get(row.object_key);
         if (!image) return fail(404, 'not_found');
         return c.json(await classifyNeck(c, new Uint8Array(await image.arrayBuffer()), row.id));
     });

@@ -6,7 +6,7 @@
 
 - `POST /api/classifications/throat`：ログイン済みユーザーの撮影プレビューを一時的に受け取り、推定します。
 - `POST /api/captures/:id/classification`：自分が所有する首周りの切り出し画像を推定します。
-- どちらも `consent: true` が必要です。対象画像やAIの生の回答はログへ保存しません。直接推定APIの対象画像はR2にも保存しません。
+- どちらも `consent: true` が必要です。対象画像やAIの生の回答はログへ保存しません。直接推定APIの対象画像はD1にも保存しません。
 - Workers AIの `@cf/meta/llama-3.2-11b-vision-instruct` に、左=ありの参考例・中央=目立たない参考例・右=判定対象の3パネル画像を渡します。縦横比を保持し、衣服・背景・肌色・ほくろなどの一致を判断基準にしないよう指示します。
 - 結果は `present` / `absent` / `pending`。不鮮明、遮蔽、判定対象部位が写っていない、曖昧な回答・不正なJSONは `pending` にします。設定不足やAI接続失敗は503で返し、正常に推定できたふりをしません。
 - `absent` は画像上で突出が目立たないという意味で、身体的に存在しないことの証明ではありません。性別・年齢・本人確認には使いません。
@@ -40,7 +40,7 @@ npm run references:prepare --workspace @nodobito/api -- --present "C:\path\prese
 npm run references:local --workspace @nodobito/api
 ```
 
-ローカルR2の `system/throat-references/v1/present.jpg` と `.../absent.jpg` に登録します。写真取得APIへ公開するレコードは作りません。実際の写真やローカルパスはリポジトリへ含めないため、別の開発者の環境では本人の許可のある方法で参考画像ファイルを渡すか、それぞれの許可済みサンプルを用意します。
+ローカルD1の `system/throat-references/v1/present.jpg` と `.../absent.jpg` に登録します。写真取得APIへ公開するレコードは作りません。実際の写真やローカルパスはリポジトリへ含めないため、別の開発者の環境では本人の許可のある方法で参考画像ファイルを渡すか、それぞれの許可済みサンプルを用意します。
 
 ## Workers AIの有効化
 
@@ -52,7 +52,7 @@ Cloudflareへログインし、モデルを利用できる状態になったら�
 npm run dev:cloudflare:ai --workspace @nodobito/api
 ```
 
-生成した一時設定ファイルでAIだけをリモート接続し、D1・R2はローカルに固定します。`wrangler dev --local` はAIへのリモート接続まで無効にするため、このコマンドでは指定しません。生成設定はGit管理外で、通常終了時に削除します。
+生成した一時設定ファイルでAIだけをリモート接続し、D1はローカルに固定します。`wrangler dev --local` はAIへのリモート接続まで無効にするため、このコマンドでは指定しません。生成設定はGit管理外で、通常終了時に削除します。
 
 AI推論はローカル起動時でもCloudflare上で実行され、アカウントの利用枠・料金が適用されます。[Workersのローカル開発](https://developers.cloudflare.com/workers/local-development/)
 
@@ -64,7 +64,7 @@ AI推論はローカル起動時でもCloudflare上で実行され、アカウ�
 npm run dev:cloudflare:ai --workspace @nodobito/api -- --port 8788
 ```
 
-本番では `wrangler.jsonc` の `env.production` に `"ai": { "binding": "AI" }` を追加し、以下で参考画像を本番の非公開R2へ登録したうえでAPIをデプロイします。この変更では本番へのアップロード・デプロイを実行していません。
+本番のAIバインディングは設定済みです。以下で参考画像を本番の非公開D1へ登録したうえでAPIをデプロイします。この変更では本番へのアップロード・デプロイを実行していません。
 
 ```powershell
 node apps/api/scripts/upload-throat-references.mjs --remote

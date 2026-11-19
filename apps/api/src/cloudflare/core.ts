@@ -2,7 +2,6 @@ import type { Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 export interface Env {
     DB: D1Database;
-    CAPTURES: R2Bucket;
     SESSION_SECRET: string;
     CONTACT_HASH_KEY: string;
     DATE_LOCATION_KEY: string;

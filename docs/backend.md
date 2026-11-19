@@ -13,7 +13,7 @@ npm run dev:cloudflare --workspace @nodobito/api
 
 別ターミナルから `npm run start --workspace mobile -- --go --lan --clear` でExpo Goを起動します。`apps/mobile/.env.local`のAPI URLには現在のPCのWi-Fi IPとポート8787を指定します。
 
-本番は先に `npm run d1:migrate:remote --workspace @nodobito/api`、次に `npm run deploy:cloudflare --workspace @nodobito/api` を実行します。既存の登録情報を残して追加テーブル・列を作成します。D1・R2・秘密情報は本番環境で別途準備します。
+本番は先に `npm run d1:migrate:remote --workspace @nodobito/api`、次に `npm run deploy:cloudflare --workspace @nodobito/api` を実行します。既存の登録情報を残して追加テーブル・列を作成します。D1・秘密情報は本番環境で別途準備します。
 
 Cloudflare版が開発対象です。`npm run dev:api`もCloudflare版を起動します。従来のExpress/SQLite版は `npm run dev:api:legacy` で起動できますが、新機能の移植先ではありません。
 
@@ -72,13 +72,13 @@ Expo Goなどの開発モードで、APIが上記のローカルメールモー�
 
 ## 画像
 
-`POST /api/captures`は`dataUrl`と任意の`regions`を受け取ります。サーバーが原画像を非公開保存し、5段階の切り出し画像を生成します。`regions`は0〜4段階の入れ子になった5個の`{x,y,width,height}`（0〜1の比率）です。指定がない場合は固定の撮影フレーム用領域を使います。これは顔・首の自動検出ではないため、実写で撮影位置を合わせ、公開前に段階0の画像を確認してください。モバイルは送信前に長辺1280ピクセルへ縮小します。サーバーは250万画素を上限にします。
+`POST /api/captures`は`dataUrl`と任意の`regions`を受け取ります。サーバーが全体画像をJPEGへ圧縮して非公開のD1へ保存し、5段階の切り出し画像を生成します。1画像は最大1,800,000バイトです。画像は32KiBずつのBLOBとしてimage_chunksへ保存し、image_objectsで管理します。無料D1はDB全体500MBのため、少人数の展示向けです。`regions`は0〜4段階の入れ子になった5個の`{x,y,width,height}`（0〜1の比率）です。指定がない場合は固定の撮影フレーム用領域を使います。これは顔・首の自動検出ではないため、実写で撮影位置を合わせ、公開前に段階0の画像を確認してください。モバイルは送信前に長辺1280ピクセルへ縮小します。サーバーは250万画素を上限にします。
 
 `GET /api/profiles/:id/captures`で閲覧できる画像IDを取得し、`GET /api/captures/:id/image`で必要な段階だけを取得します。原画像の取得APIは公開しません。取得ごとにブロック・公開同意・達成段階・期限を確認し、`no-store`で配信します。旧版で保存された画像は公開範囲が不明なため本人だけ閲覧可能です。再撮影・再投稿すると段階画像が生成されます。
 
 `DELETE /api/captures/:id`は同じ撮影の全段階と原画像を削除します。`GET /api/captures/:id/access-history`は所有者向けの閲覧履歴です。
 
-`POST /api/classifications/throat`は撮影した首周りのプレビュー、`POST /api/captures/:id/classification`は所有する切り出し画像を推定します。`consent:true`が必要です。非公開R2に保存した参考例2枚との比較で `present/absent/pending` を返し、プロフィールへの適用は利用者の確認後に行います。AIや参考画像の未設定・モデル規約の未同意は503です。[準備・起動・検証手順](throat-classification.md)を参照してください。
+`POST /api/classifications/throat`は撮影した首周りのプレビュー、`POST /api/captures/:id/classification`は所有する切り出し画像を推定します。`consent:true`が必要です。非公開のD1画像テーブルに保存した参考例2枚との比較で `present/absent/pending` を返し、プロフィールへの適用は利用者の確認後に行います。AIや参考画像の未設定・モデル規約の未同意は503です。[準備・起動・検証手順](throat-classification.md)を参照してください。
 
 ## デート予定・プライバシー
 
@@ -91,7 +91,7 @@ Expo Goなどの開発モードで、APIが上記のローカルメールモー�
 
 `POST /api/contacts/hide`は`contacts`配列をHMAC化し、検索から知り合いを除外します。`DELETE /api/contacts/hide`で解除できます。登録メールを照合に使います。電話番号を使う運用は別途必要です。
 
-`DELETE /api/account`または既存互換の`POST /api/account/delete`は`password`で再認証し、アカウントと関連データ・R2画像を削除します。監査記録と既存バックアップは保存期間まで残ります。
+`DELETE /api/account`または既存互換の`POST /api/account/delete`は`password`で再認証し、アカウントと関連データ・D1内の画像を削除します。監査記録と既存バックアップは保存期間まで残ります。
 
 ## 通知・安全・運営
 
@@ -116,17 +116,17 @@ Expo Goなどの開発モードで、APIが上記のローカルメールモー�
 
 ## バックアップ・復旧
 
-`npm run backup:cloudflare --workspace @nodobito/api`でD1のSQLと非公開R2画像をローカルへ保存します。`API_BASE_URL`と`BACKUP_ADMIN_KEY`（監査キー）を環境変数に指定すると15分有効のメンテナンス制御で書き込みを止め、15秒待ってから取得し、完了時に解除します。途中で失敗しても期限で解除されます。DBとR2をまたぐ完全なトランザクションではないため、長時間リクエストのない時間帯に実行し、完了した`manifest.json`があるバックアップだけを利用してください。APIを停止して手動で取得する場合は`-- --writes-stopped`を指定できます。
+`npm run backup:cloudflare --workspace @nodobito/api`で画像BLOBを含むD1全体をSQLへ書き出します。`API_BASE_URL`と`BACKUP_ADMIN_KEY`（監査キー）を環境変数に指定すると15分有効のメンテナンス制御で書き込みを止め、完了後に解除します。API停止中は `-- --writes-stopped` も利用できます。バージョン2のmanifestにSQLのチェックサムを記録します。旧R2方式のバージョン1バックアップは、この復旧スクリプトでは拒否します。
 
-GitHub Actionsの`Cloudflare backup`は毎日日本時間4時と手動実行に対応します。リポジトリのproduction環境のSecretsへ`CLOUDFLARE_BACKUP_API_TOKEN`（D1 export/queryとR2読み取り）, `NODOBITO_BACKUP_ADMIN_KEY`を、リポジトリのVariablesへ`NODOBITO_API_BASE_URL`を設定してください。API URL変数が未設定ならジョブはスキップします。秘密情報が不足していれば失敗し、バックアップ成功として扱いません。保存期間は7日です。バックアップ中はアプリに一時的な503が返ります。
+GitHub Actionsの`Cloudflare backup`は毎日日本時間4時と手動実行に対応します。リポジトリのproduction環境のSecretsへ`CLOUDFLARE_BACKUP_API_TOKEN`（D1 export/query）, `NODOBITO_BACKUP_ADMIN_KEY`を、リポジトリのVariablesへ`NODOBITO_API_BASE_URL`を設定してください。API URL変数が未設定ならジョブはスキップします。秘密情報が不足していれば失敗し、バックアップ成功として扱いません。保存期間は7日です。バックアップ中はアプリに一時的な503が返ります。
 
-復旧は新しい空のD1と新しいR2バケットを用意して実行します。
+復旧は新しい空のD1を用意して実行します。
 
 ```powershell
-npm run restore:cloudflare --workspace @nodobito/api -- --input <バックアップの絶対パス> --database <新しいDB名> --bucket <新しいバケット名>
+npm run restore:cloudflare --workspace @nodobito/api -- --input <バックアップの絶対パス> --database <新しいDB名>
 ```
 
-チェックサム検証後に復旧し、確認してから本番バインディングを新しいリソースへ切り替えてデプロイします。元の本番DB・バケットへの上書き復旧は拒否します。秘密鍵はバックアップに含めないため、`SESSION_SECRET`, `CONTACT_HASH_KEY`, `DATE_LOCATION_KEY`を安全に保管してください。定期的に別リソースへの復旧訓練を行ってください。
+チェックサム検証後に復旧し、確認してから本番バインディングを新しいリソースへ切り替えてデプロイします。元の本番DBへの上書き復旧は拒否します。秘密鍵はバックアップに含めないため、`SESSION_SECRET`, `CONTACT_HASH_KEY`, `DATE_LOCATION_KEY`を安全に保管してください。定期的に別DBへの復旧訓練を行ってください。
 
 ## テスト
 
@@ -136,4 +136,16 @@ npm run typecheck:cloudflare --workspace @nodobito/api
 npm run typecheck --workspace @nodobito/api
 ```
 
-APIテストはSQLiteとメモリ上のR2互換ストレージで認証・権限・同意・期限・画像配信・ブロック・既読・再設定・削除を確認します。本番D1/R2、実メール、実Push、AI推論、バックアップ復旧は、それぞれの実環境設定後に別途確認してください。
+APIテストは画像BLOBを含むSQLiteで認証・権限・同意・期限・画像配信・ブロック・既読・再設定・削除を確認します。本番D1、実メール、実Push、AI推論、バックアップ復旧は、それぞれの実環境設定後に別途確認してください。
+
+## 旧ローカルR2から写真を移行
+
+APIを止めてからリポジトリ直下で次を順に実行します。本番は変更せず、元のR2写真も削除しません。1,800,000バイトを超える旧画像は移行を停止するため、別途縮小または再撮影してください。
+
+```powershell
+npm run d1:migrate:local --workspace @nodobito/api
+npm run images:migrate:local --workspace @nodobito/api
+npm run references:local --workspace @nodobito/api
+```
+
+移行済みのキーはスキップするため再実行できます。旧R2画像を読み取る一時設定は移行時だけ使用し、通常起動・本番にはR2は不要です。

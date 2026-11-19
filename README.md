@@ -323,19 +323,18 @@ apps/
 
 現行のCloudflare版の機能・API・運営画面・バックアップ・テスト手順は [バックエンド詳細](docs/backend.md) を参照してください。本人確認・年齢確認の承認待ちは廃止しています。
 
-### Cloudflare版（D1 + Workers + R2）
+### Cloudflare版（D1 + Workers）
 
 Cloudflareで動かすAPI実装は`apps/api/src/cloudflare.ts`です。メールアドレスとパスワードで登録・ログインし、パスワードはPBKDF2でハッシュ化して保存します。APIは期限付きBearerセッションを発行し、アプリはSecureStoreに保存します。メール確認・パスワード再設定は開発用コード発行とResend連携に対応しています。本番の送信にはメールサービスの設定が必要です。
 
 - Cloudflare D1：ユーザー、プロフィール、いいね、マッチ、会話、日課、安全・運営記録
-- Cloudflare R2：非公開の撮影画像。画像APIが権限と公開同意を確認してから要求時にストリーム配信し、公開URLは発行しません
+- 撮影画像：D1の非公開BLOB。画像APIが権限と公開同意を確認してから配信し、公開URLは発行しません
 - Cloudflare Workers：Hono API、パスワード認証、通知ジョブ、期限切れデータの整理
 
 Cloudflareアカウントでリソースを作成し、D1のIDを設定してからローカル確認します。
 
 ```powershell
 npm exec --workspace @nodobito/api -- wrangler d1 create nodobito-db --config apps/api/wrangler.jsonc
-npm exec --workspace @nodobito/api -- wrangler r2 bucket create nodobito-private-captures --config apps/api/wrangler.jsonc
 ```
 
 `d1 create`の出力にある`database_id`を`apps/api/wrangler.jsonc`へ設定します。各種秘密値は`.dev.vars`内だけに保存します。
@@ -359,11 +358,10 @@ npm run typecheck:cloudflare --workspace @nodobito/api
 ```powershell
 cd C:\github_use\HackStage\apps\api
 npx wrangler login
-npx wrangler r2 bucket create nodobito-private-captures
 npm run d1:migrate:remote
 ```
 
-R2バケットは事前に利用を有効化し、すでに同名のものがあれば再作成は不要です。本番用の秘密値は`npx wrangler secret put <キー名> --env production`で登録してください。必要なキーは`SESSION_SECRET`、`CONTACT_HASH_KEY`、`DATE_LOCATION_KEY`、`ADMIN_SAFETY_KEY`、`ADMIN_CONTENT_KEY`、`ADMIN_AUDIT_KEY`です。用途ごとに異なるランダムな値を使い、`DATE_LOCATION_KEY`は32バイトをBase64化した値にします。Expo Pushを使う場合は`EXPO_ACCESS_TOKEN`も登録します。秘密情報をGitへコミットしないでください。
+写真もD1のBLOBへ保存するため、R2の契約・バケット作成は不要です。少人数の展示向けに、1画像1.8MB以下・無料DB全体500MBの範囲で利用します。旧ローカル写真の移行は[手順書](docs/backend.md#旧ローカルr2から写真を移行)を参照してください。本番用の秘密値は`npx wrangler secret put <キー名> --env production`で登録してください。必要なキーは`SESSION_SECRET`、`CONTACT_HASH_KEY`、`DATE_LOCATION_KEY`、`ADMIN_SAFETY_KEY`、`ADMIN_CONTENT_KEY`、`ADMIN_AUDIT_KEY`です。用途ごとに異なるランダムな値を使い、`DATE_LOCATION_KEY`は32バイトをBase64化した値にします。Expo Pushを使う場合は`EXPO_ACCESS_TOKEN`も登録します。秘密情報をGitへコミットしないでください。
 
 リポジトリルートで`npm run deploy:cloudflare --workspace @nodobito/api`を実行すると本番環境へデプロイします。出力されたHTTPS URLの`/health/ready`で`{"ok":true,"database":"ready"}`が返ることを確認し、モバイルの`EXPO_PUBLIC_API_BASE_URL`へそのURLを設定してExpoを再起動します。独自ドメインはAPIの公開後にWorkerへ追加できます。
 
@@ -375,7 +373,7 @@ R2バケットは事前に利用を有効化し、すでに同名のものがあ
 
 #### ログイン・新規登録も動かす場合（Cloudflare API）
 
-Expo Goで画面を見るだけなら、上の「画面を実機で確認する」の手順だけで起動できます。アプリのログイン・新規登録をAPIにつなぐ場合は、先にCloudflareのローカルD1・R2と秘密値を準備します。
+Expo Goで画面を見るだけなら、上の「画面を実機で確認する」の手順だけで起動できます。アプリのログイン・新規登録をAPIにつなぐ場合は、先にCloudflareのローカルD1と秘密値を準備します。
 
 ```powershell
 npm run d1:migrate:local --workspace @nodobito/api
