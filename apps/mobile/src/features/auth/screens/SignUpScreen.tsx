@@ -1,9 +1,9 @@
 import { classificationLabels } from '../api/classification';
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { Redirect, router } from 'expo-router';
-import { needsEmailVerification } from '../api/client';
+import { getApiBaseUrl, needsEmailVerification } from '../api/client';
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AuthButton } from '../components/AuthButton';
@@ -13,11 +13,21 @@ import { PrefectureSelect } from '../components/PrefectureSelect';
 import { useAuth } from '../context/AuthContext';
 import { useSignUpDraft } from '../context/SignUpDraftContext';
 import { colors, spacing } from '../../../theme/tokens';
+import { KeyboardAwareScrollView } from '../../../components/KeyboardAwareScrollView';
 
 export default function SignUpScreen() {
   const { profilePhotoUri, profilePhotoDataUrl, setProfilePhotoDataUrl, profilePhotoClassification, setProfilePhotoClassification } = useSignUpDraft();
   const { profile, token, saveProfile, logOut } = useAuth();
   const isEditingProfile = Boolean(profile?.birth_year);
+  const photoSource = profilePhotoUri
+    ? { uri: profilePhotoUri }
+    : profile?.profile_photo_capture_id && token
+      ? {
+        uri: `${getApiBaseUrl()}/api/captures/${encodeURIComponent(profile.profile_photo_capture_id)}/image`,
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'reload' as const,
+      }
+      : null;
   const maskedEmail = profile?.email
     ? `${profile.email.split('@')[0].slice(0, 2)}************`
     : 'メールアドレスを取得できませんでした';
@@ -90,7 +100,8 @@ export default function SignUpScreen() {
       );
       setProfilePhotoDataUrl(null);
       setProfilePhotoClassification(null);
-      router.replace('/home');
+      if (isEditingProfile) router.back();
+      else router.replace('/home');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'プロフィールを保存できませんでした。');
     } finally {
@@ -125,17 +136,17 @@ export default function SignUpScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       {header}
-      <ScrollView
+      <KeyboardAwareScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.sectionTitle}>基本情報</Text>
 
         <View style={styles.photoCard}>
-          {profilePhotoUri ? (
+          {photoSource ? (
             <Image
-              accessibilityLabel="撮影したプロフィール写真"
-              source={{ uri: profilePhotoUri }}
+              accessibilityLabel="プロフィール写真"
+              source={photoSource}
               style={styles.photoTile}
               resizeMode="cover"
             />
@@ -151,7 +162,7 @@ export default function SignUpScreen() {
           )}
           <View style={styles.photoCopy}>
             <Text style={styles.photoTitle}>プロフィール写真</Text>
-            {profilePhotoUri ? (
+            {photoSource ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={() => router.push('/capture-photo')}
@@ -209,7 +220,7 @@ export default function SignUpScreen() {
           onPress={handleComplete}
           disabled={busy}
         />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

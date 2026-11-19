@@ -1,6 +1,6 @@
 import { router, Stack } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AuthButton } from '../components/AuthButton';
@@ -8,6 +8,7 @@ import { FormField } from '../components/FormField';
 import { authDestination } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../../../theme/tokens';
+import { KeyboardAwareScrollView } from '../../../components/KeyboardAwareScrollView';
 
 type EmailAuthScreenProps = {
   mode: 'login' | 'signup';
@@ -59,7 +60,7 @@ export default function EmailAuthScreen({ mode }: EmailAuthScreenProps) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <Stack.Screen options={{ animation: 'none', gestureEnabled: false }} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
           <Text style={styles.title}>のどじまん</Text>
@@ -119,7 +120,7 @@ export default function EmailAuthScreen({ mode }: EmailAuthScreenProps) {
           onPress={handleSubmit}
           disabled={busy}
         />
-        {busy ? <ActivityIndicator style={styles.spinner} color={colors.primary} /> : null}
+        {busy ? <ActivityIndicator style={styles.spinner} color={colors.mutedText} /> : null}
 
         {!isSignup ? (
           <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.push('/reset-password')} style={styles.switchButton}>
@@ -140,7 +141,7 @@ export default function EmailAuthScreen({ mode }: EmailAuthScreenProps) {
             <Text style={styles.switchLinkText}>{isSignup ? 'ログイン' : '新規登録'}</Text>
           </Text>
         </Pressable>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

@@ -125,7 +125,7 @@ export function profileRoutes(app: App) {
       COALESCE((SELECT SUM(impressions) FROM discovery_impressions WHERE candidate_id=p.user_id),0) AS exposure
       FROM profiles p JOIN users u ON u.id=p.user_id JOIN profiles own ON own.user_id=?
       JOIN discovery_preferences mine ON mine.user_id=own.user_id LEFT JOIN discovery_preferences theirs ON theirs.user_id=p.user_id
-      WHERE p.user_id<>own.user_id AND u.status='active' AND p.display_name<>'' AND p.birth_year IS NOT NULL AND own.birth_year IS NOT NULL
+      WHERE p.user_id<>own.user_id AND p.user_id NOT LIKE 'codex-demo-%' AND u.status='active' AND p.display_name<>'' AND p.birth_year IS NOT NULL AND own.birth_year IS NOT NULL
       AND (? - p.birth_year) BETWEEN mine.min_age AND mine.max_age
       AND (? - own.birth_year) BETWEEN COALESCE(theirs.min_age,18) AND COALESCE(theirs.max_age,120)
       AND (? IS NULL OR EXISTS(SELECT 1 FROM json_each(p.hobbies) candidate_hobby WHERE candidate_hobby.value=?))

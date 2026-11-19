@@ -68,7 +68,7 @@ export default function MatchesScreen() {
           </View>
 
           <ScrollView
-            refreshControl={<RefreshControl refreshing={pullRefreshing} onRefresh={() => void refreshByPull()} />}
+            refreshControl={<RefreshControl refreshing={pullRefreshing} onRefresh={() => void refreshByPull()} tintColor={colors.mutedText} colors={[colors.mutedText]} />}
             style={styles.list}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"

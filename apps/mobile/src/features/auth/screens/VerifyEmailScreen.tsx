@@ -1,12 +1,14 @@
 import { Redirect, router, Stack } from 'expo-router';
 import { useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiRequest, authDestination, needsEmailVerification } from '../api/client';
 import { AuthButton } from '../components/AuthButton';
 import { FormField } from '../components/FormField';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../../../theme/tokens';
+import { KeyboardAwareScrollView } from '../../../components/KeyboardAwareScrollView';
 
 export default function VerifyEmailScreen() {
   const { token, profile, refreshProfile, logOut, isRestoring } = useAuth();
@@ -26,8 +28,23 @@ export default function VerifyEmailScreen() {
   if (profile && !needsEmailVerification(profile)) return <Redirect href={authDestination(profile)} />;
   return <SafeAreaView style={styles.safeArea}>
     <Stack.Screen options={{ gestureEnabled: false }} />
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.brand}>のどじまん</Text>
+    <KeyboardAwareScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <View style={styles.header}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="ログイン画面に戻る"
+          disabled={busy}
+          onPress={() => void run(async () => {
+            await logOut().catch(() => undefined);
+            router.replace('/');
+          })}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+        >
+          <Ionicons name="chevron-back" size={25} color={colors.mutedText} />
+        </Pressable>
+        <Text style={styles.brand}>のどじまん</Text>
+        <View style={styles.headerSpacer} />
+      </View>
       <Text style={styles.title}>メールアドレスの確認</Text>
       <Text style={styles.description}>{profile?.email} 宛てのメールに届いた6桁の確認コードを入力してください。コードは15分間有効です。</Text>
       <Text style={styles.description}>届いていない場合は迷惑メールフォルダを確認するか、下のボタンから送信してください。</Text>
@@ -42,16 +59,17 @@ export default function VerifyEmailScreen() {
         await apiRequest('/api/email/verification', token, { method: 'POST', body: '{}' });
         setNotice('確認メールの送信を受け付けました。メールに届いたコードを入力してください。');
       })} />
-      <AuthButton variant="outline" label="ログイン画面に戻る" disabled={busy} onPress={() => void run(async () => {
-        await logOut().catch(() => undefined); router.replace('/');
-      })} />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   </SafeAreaView>;
 }
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, gap: spacing.md, padding: spacing.lg },
-  brand: { color: colors.text, fontSize: 21, fontWeight: '700', textAlign: 'center', marginBottom: spacing.md },
+  header: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  backButton: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center' },
+  pressed: { opacity: 0.7 },
+  headerSpacer: { width: 36 },
+  brand: { color: colors.text, fontSize: 21, fontWeight: '700' },
   title: { color: colors.text, fontSize: 21, fontWeight: '700' },
   description: { color: colors.mutedText, fontSize: 13, lineHeight: 20 },
   notice: { padding: spacing.md, backgroundColor: colors.primarySoft, borderRadius: 10 },

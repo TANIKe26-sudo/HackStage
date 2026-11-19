@@ -1,13 +1,14 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { router, Stack } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { apiRequest } from '../api/client';
 import { AuthButton } from '../components/AuthButton';
 import { FormField } from '../components/FormField';
 import { colors, spacing } from '../../../theme/tokens';
+import { KeyboardAwareScrollView } from '../../../components/KeyboardAwareScrollView';
 
 type Delivery = { delivery?: string; code?: string; userId?: string };
 
@@ -77,7 +78,7 @@ export default function ResetPasswordScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <Stack.Screen options={{ animation: 'slide_from_right', animationMatchesGesture: true, gestureEnabled: !busy }} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
@@ -121,7 +122,7 @@ export default function ResetPasswordScreen() {
             setStep('email'); setRecoveryUserId(''); setCode(''); setPassword(''); setConfirmation(''); setLocalCode(''); setNotice('');
           }}><Text style={styles.switchText}><Text style={styles.switchLinkText}>メールアドレスを変更する</Text></Text></Pressable>
         </> : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

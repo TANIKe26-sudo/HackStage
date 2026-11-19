@@ -1,7 +1,7 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useRef } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '../../../theme/tokens';
@@ -52,6 +52,16 @@ function ConnectedPartner({ conversationId }: { conversationId: string }) {
     ]);
   };
   const capture = detail?.captures.find(c => c.stage === detail.visibleStage);
+
+  if (!detail && resource.loading) {
+    return (
+      <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
+        <View style={styles.loadingScreen}>
+          <ActivityIndicator size="small" color={colors.mutedText} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
@@ -126,6 +136,12 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.background,
   },
   header: {

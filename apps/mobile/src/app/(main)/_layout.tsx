@@ -7,12 +7,17 @@ import { colors } from '../../theme/tokens';
 
 export default function MainLayout() {
   const { token, profile, isRestoring } = useAuth();
-  if (isRestoring) return <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>;
+  if (isRestoring) return <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator color={colors.mutedText} /></View>;
   if (!token) return <Redirect href="/" />;
   if (needsEmailVerification(profile)) return <Redirect href="/verify-email" />;
   if (!isProfileReady(profile)) return <Redirect href="/sign-up" />;
   return (
-    <Stack screenOptions={{ headerShown: false, animation: 'none' }}>
+    <Stack screenOptions={{
+      headerShown: false,
+      animation: 'none',
+      fullScreenGestureEnabled: false,
+      gestureResponseDistance: { start: 24 },
+    }}>
       <Stack.Screen
         name="chat/[conversationId]"
         options={{

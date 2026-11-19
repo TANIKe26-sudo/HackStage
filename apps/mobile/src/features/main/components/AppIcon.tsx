@@ -33,7 +33,7 @@ const iconNames = {
   calendar: 'calendar-outline',
   location: 'location-outline',
   hobbies: 'color-palette-outline',
-  report: 'checkmark-outline',
+  report: 'shield-outline',
   accountDelete: 'trash-outline',
   hidePeople: 'person-remove-outline',
   chevron: 'chevron-forward-outline',
