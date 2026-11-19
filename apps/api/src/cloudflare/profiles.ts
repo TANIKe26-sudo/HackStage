@@ -78,8 +78,9 @@ export function profileRoutes(app: App) {
         const min = body.minAge ?? previous?.min_age ?? 18, max = body.maxAge ?? previous?.max_age ?? 120;
         const previousRange = (previous?.location_range as LocationRange | null | undefined) ?? null;
         const requestedRange: unknown = body.locationRange === undefined ? previousRange : body.locationRange;
-        let locationRange: LocationRange | null;
-        if (requestedRange === null || isLocationRange(requestedRange)) locationRange = requestedRange;
+        let locationRange: LocationRange | null = null;
+        if (requestedRange === null) locationRange = null;
+        else if (isLocationRange(requestedRange)) locationRange = requestedRange;
         else fail(400, 'invalid_location_range');
         if (!Number.isInteger(min) || !Number.isInteger(max) || min < 18 || max > 120 || min > max) fail(400, 'invalid_preferences');
         if (locationRange === 'same_prefecture' || locationRange === 'same_region') {
