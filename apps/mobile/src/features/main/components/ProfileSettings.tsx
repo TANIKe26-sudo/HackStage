@@ -168,12 +168,6 @@ function SettingsContent({ kind }: { kind: SettingKind }) {
             <Text style={styles.locationRangeLabel}>{option.label}</Text>
           </Pressable>;
         })}
-        {locationRange !== null ? <Pressable
-          accessibilityRole="button"
-          disabled={busy}
-          onPress={() => { setLocationRange(null); setError(''); }}
-          style={({ pressed }) => [styles.clearLocationRange, pressed && styles.pressed]}
-        ><Text style={styles.linkText}>設定を解除</Text></Pressable> : null}
       </View>
       {!profile?.prefecture_code ? <>
         <Text style={styles.text}>同じ都道府県・同じ地方で探すには、プロフィールから都道府県の設定をしてください。<Text accessibilityRole="link" onPress={() => router.push('/sign-up')} style={styles.linkText}>設定する</Text></Text>
@@ -314,7 +308,6 @@ const styles = StyleSheet.create({
   radioOuterSelected: { borderColor: colors.primary },
   radioInner: { width: 11, height: 11, borderRadius: 6, backgroundColor: colors.primary },
   locationRangeLabel: { color: colors.text, fontSize: 15 },
-  clearLocationRange: { alignSelf: 'flex-start', paddingVertical: spacing.xs },
   linkText: { color: colors.primary, fontSize: 14, fontWeight: '600', textDecorationLine: 'underline' },
   disabled: { opacity: 0.4 },
 });

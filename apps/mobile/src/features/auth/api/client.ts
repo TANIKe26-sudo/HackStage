@@ -52,6 +52,8 @@ const errorMessages: Record<string, string> = {
   reauthentication_failed: '確認用パスワードが正しくありません。',
   invalid_capture_size: '画像を読み込めませんでした。アプリ内カメラで撮り直してください。',
   match_not_found: 'このトークは利用できません。ブロックや退会の可能性があります。',
+  swipe_undo_not_last: '直前の操作ではないため、プロフィールを戻せません。画面を更新してください。',
+  swipe_undo_matched: 'マッチ成立後の操作は取り消せません。',
   topic_not_available: 'このお題の受付は終了しています。再読み込みしてください。',
   stage_locked: '公開条件にまだ達していません。会話とデイリーを続けてください。',
   invalid_message: 'メッセージを1〜2000文字で入力してください。',
