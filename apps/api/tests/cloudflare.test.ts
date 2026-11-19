@@ -1,3 +1,4 @@
+import { imageStore, maxImageBytes } from '../src/cloudflare/image-store.js';
 import { parseClassification, referenceKeys } from '../src/cloudflare/classification.js';
 import { comparisonImage } from '../src/cloudflare/classification-image.js';
 import * as jpeg from 'jpeg-js';
@@ -15,7 +16,7 @@ function fixture() {
     for (const name of readdirSync(new URL('../migrations/', import.meta.url)).filter(n => n.endsWith('.sql')).sort())
         sqlite.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), 'utf8'));
     const prepare = (sql: string) => { let bindings: unknown[] = []; const execute = () => { const result = sqlite.prepare(sql).run(...bindings as any[]); return { success: true, meta: { changes: Number(result.changes) } }; }; const stmt: any = { _run: execute, bind: (...values: unknown[]) => { bindings = values; return stmt; }, first: async () => sqlite.prepare(sql).get(...bindings as any[]) ?? null, all: async () => ({ results: sqlite.prepare(sql).all(...bindings as any[]), success: true }), run: async () => { const result = sqlite.prepare(sql).run(...bindings as any[]); return { success: true, meta: { changes: Number(result.changes) } }; } }; return stmt; };
-    const objects = new Map<string, Uint8Array>();
+    const objects = { get size() { return Number((sqlite.prepare('SELECT COUNT(*) AS n FROM image_objects').get() as any).n); } };
     const env = { DB: { prepare, batch: async (statements: any[]) => { sqlite.exec('BEGIN'); try {
                 const results = [];
                 for (const stmt of statements)
@@ -27,8 +28,6 @@ function fixture() {
                 sqlite.exec('ROLLBACK');
                 throw e;
             } } },
-        CAPTURES: { put: async (key: string, value: Uint8Array) => objects.set(key, Uint8Array.from(value)), get: async (key: string) => { const bytes = objects.get(key); return bytes ? { body: bytes, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) } : null; }, delete: async (keys: string | string[]) => { for (const key of Array.isArray(keys) ? keys : [keys])
-                objects.delete(key); } },
         SESSION_SECRET: 's'.repeat(40), CONTACT_HASH_KEY: 'c'.repeat(40), DATE_LOCATION_KEY: Buffer.alloc(32, 7).toString('base64'), ADMIN_AUDIT_KEY: 'a'.repeat(40), ADMIN_SAFETY_KEY: 'b'.repeat(40), ADMIN_CONTENT_KEY: 'd'.repeat(40), ADMIN_USERS_KEY: 'u'.repeat(40), MAIL_MODE: 'local' } as unknown as Env;
     const pending: Promise<unknown>[] = [];
     const ctx = { waitUntil: (p: Promise<unknown>) => pending.push(p), passThroughOnException: () => { } } as any;
@@ -48,6 +47,21 @@ function fixture() {
     return { sqlite, env, objects, request, account, pair, pending, ctx };
 }
 const pngData = () => `data:image/png;base64,${Buffer.from(encodePng({ width: 100, height: 200, data: new Uint8Array(100 * 200 * 4).fill(200) })).toString('base64')}`;
+
+test('D1 image chunks preserve bytes, overwrite atomically and cascade on deletion', async () => {
+    const f = fixture(), store = imageStore(f.env);
+    const bytes = Uint8Array.from({ length: 100000 }, (_, i) => i % 251);
+    await store.put('private/test', bytes);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM image_chunks').get()!.n, 4);
+    assert.deepEqual(new Uint8Array(await (await store.get('private/test'))!.arrayBuffer()), bytes);
+    await assert.rejects(() => store.put('private/test', new Uint8Array(maxImageBytes + 1)));
+    assert.deepEqual(new Uint8Array(await (await store.get('private/test'))!.arrayBuffer()), bytes);
+    await store.put('private/test', new Uint8Array([9, 8, 7]));
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM image_chunks').get()!.n, 1);
+    await store.delete('private/test');
+    assert.equal(await store.get('private/test'), null);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM image_chunks').get()!.n, 0);
+});
 
 test('merge migration preserves existing preference filters and imports mobile settings and reads', () => {
     const db = new DatabaseSync(':memory:');
@@ -118,7 +132,7 @@ test('cropped connect photos remain accessible with main permissions and delete 
     const f = fixture(), { a, b, matchId } = await f.pair();
     for (let stage = 0; stage < 5; stage++) {
         const key = `public/${a.id}/connect-group/${stage}`;
-        f.objects.set(key, new Uint8Array([1, 2, 3]));
+        await imageStore(f.env).put(key, new Uint8Array([1, 2, 3]));
         f.sqlite.prepare('INSERT INTO captures(id,owner_id,stage,object_key,media_type,created_at) VALUES(?,?,?,?,?,?)').run(`connect-${stage}`, a.id, stage, key, 'image/jpeg', new Date().toISOString());
     }
     assert.equal((await f.request('/api/captures/connect-0/image', { token: b.token })).status, 200);
@@ -336,7 +350,7 @@ test('classification needs consent and only returns a suggestion', async () => {
     const f = fixture(), a = await f.account();
     const uploaded = await f.request('/api/captures', { method: 'POST', token: a.token, body: { dataUrl: pngData() } });
     assert.equal((await f.request(`/api/captures/${uploaded.body.id}/classification`, { method: 'POST', token: a.token, body: { consent: false } })).status, 400);
-    for (const key of Object.values(referenceKeys)) f.objects.set(key, Buffer.from(pngData().split(',')[1], 'base64'));
+    for (const key of Object.values(referenceKeys)) await imageStore(f.env).put(key, Buffer.from(pngData().split(',')[1], 'base64'));
     let sentImage: unknown;
     f.env.AI = { run: async (_model, body) => { sentImage = body.image; return { response: '{"classification":"present","visibility":"clear","reason":"visible_prominence"}' }; } };
     const result = await f.request(`/api/captures/${uploaded.body.id}/classification`, { method: 'POST', token: a.token, body: { consent: true } });
@@ -380,7 +394,7 @@ test('direct classification requires consent, configuration and references, and 
     let input: Record<string, unknown> | undefined;
     f.env.AI = { run: async (_model, value) => { input = value; return { response: '{"classification":"absent","visibility":"clear","reason":"no_distinct_prominence"}' }; } };
     assert.equal((await f.request(path, { method: 'POST', token: user.token, body: { consent: true, dataUrl: pngData() } })).body.error, 'classification_references_not_configured');
-    for (const key of Object.values(referenceKeys)) f.objects.set(key, Buffer.from(pngData().split(',')[1], 'base64'));
+    for (const key of Object.values(referenceKeys)) await imageStore(f.env).put(key, Buffer.from(pngData().split(',')[1], 'base64'));
     const result = await f.request(path, { method: 'POST', token: user.token, body: { consent: true, dataUrl: pngData() } });
     assert.equal(result.status, 200);
     assert.equal(result.body.classification, 'absent');
@@ -394,7 +408,7 @@ test('direct classification requires consent, configuration and references, and 
 
 test('classification provider failure is explicit and owner-only capture classification cannot be bypassed', async () => {
     const f = fixture(), a = await f.account(), b = await f.account();
-    for (const key of Object.values(referenceKeys)) f.objects.set(key, Buffer.from(pngData().split(',')[1], 'base64'));
+    for (const key of Object.values(referenceKeys)) await imageStore(f.env).put(key, Buffer.from(pngData().split(',')[1], 'base64'));
     f.env.AI = { run: async () => { throw new Error('upstream failure'); } };
     assert.equal((await f.request('/api/classifications/throat', { token: a.token, method: 'POST', body: { consent: true, dataUrl: pngData() } })).body.error, 'classification_service_unavailable');
     const uploaded = await f.request('/api/captures', { token: a.token, method: 'POST', body: { dataUrl: pngData() } });

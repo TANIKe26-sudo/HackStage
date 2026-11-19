@@ -1,3 +1,4 @@
+import { imageStore } from './image-store.js';
 import { Buffer } from 'node:buffer';
 import { comparisonImage, decodeImage } from './classification-image.js';
 import { audit, fail, input, limited, rate, type App, type Ctx } from './core.js';
@@ -45,7 +46,7 @@ export function parseClassification(raw: unknown) {
 }
 export async function classifyNeck(c: Ctx, bytes: Uint8Array, captureId?: string) {
     if (!c.env.AI) return fail(503, 'classification_service_not_configured');
-    const [present, absent] = await Promise.all([c.env.CAPTURES.get(referenceKeys.present), c.env.CAPTURES.get(referenceKeys.absent)]);
+    const [present, absent] = await Promise.all([imageStore(c.env).get(referenceKeys.present), imageStore(c.env).get(referenceKeys.absent)]);
     if (!present || !absent) return fail(503, 'classification_references_not_configured');
     let image: Uint8Array;
     try { image = comparisonImage(new Uint8Array(await present.arrayBuffer()), new Uint8Array(await absent.arrayBuffer()), bytes); }

@@ -1,3 +1,4 @@
+import { imageStore } from './image-store.js';
 import { audit, blocked, contactHash, fail, id, input, limited, now, notify, page, password, rate, stageProgress, text, verifyPassword, type App, type Ctx, type Row } from './core.js';
 export async function publicProfile(c: Ctx, userId: string) {
     const me = c.get('userId');
@@ -157,7 +158,7 @@ export function profileRoutes(app: App) {
         const captures = await c.env.DB.prepare('SELECT object_key,original_key FROM captures WHERE owner_id=?').bind(me).all<Row>();
         const keys = [...new Set(captures.results.flatMap(r => [r.object_key, r.original_key]).filter(Boolean))] as string[];
         for (let i = 0; i < keys.length; i += 100)
-            await c.env.CAPTURES.delete(keys.slice(i, i + 100));
+            await imageStore(c.env).delete(keys.slice(i, i + 100));
         await c.env.DB.batch([
             c.env.DB.prepare('DELETE FROM email_outbox WHERE recipient=(SELECT email FROM users WHERE id=?)').bind(me),
             c.env.DB.prepare('UPDATE audit_logs SET actor_id=NULL WHERE actor_id=?').bind(me),

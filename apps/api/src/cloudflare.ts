@@ -39,6 +39,7 @@ app.get('/health/ready', async (c) => {
     try {
         await c.env.DB.prepare('SELECT id FROM user_limits LIMIT 1').first();
         await c.env.DB.prepare('SELECT key FROM service_state LIMIT 1').first();
+        await c.env.DB.prepare('SELECT object_key FROM image_objects LIMIT 1').first();
         if (!configured(c.env))
             return c.json({ ok: false, database: 'ready', error: 'server_auth_not_configured' }, 503);
         return c.json({ ok: true, database: 'ready' });

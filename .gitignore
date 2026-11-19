@@ -13,3 +13,4 @@ backups/
 .env
 .env.*
 !.env.example
+.wrangler-r2-import.json
