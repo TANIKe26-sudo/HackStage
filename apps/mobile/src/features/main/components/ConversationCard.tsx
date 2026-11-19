@@ -33,7 +33,7 @@ export function ConversationCard({
 
       <View style={styles.trailingContent}>
         <View style={styles.timestampRow}>
-          <Text style={styles.timestamp}>{conversation.updatedAt}</Text>
+          <Text numberOfLines={1} style={styles.timestamp}>{conversation.updatedAt}</Text>
           {conversation.hasUnread ? <View style={styles.unreadDot} /> : null}
         </View>
       </View>
@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   trailingContent: {
-    minWidth: 44,
+    minWidth: 80,
     position: 'relative',
     alignItems: 'flex-end',
     justifyContent: 'center',
@@ -104,6 +104,7 @@ const styles = StyleSheet.create({
   timestamp: {
     color: colors.mutedText,
     fontSize: 11,
+    flexShrink: 0,
   },
   unreadDot: {
     width: 8,

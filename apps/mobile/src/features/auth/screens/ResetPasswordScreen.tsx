@@ -1,3 +1,4 @@
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { router, Stack } from 'expo-router';
 import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -73,17 +74,33 @@ export default function ResetPasswordScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Stack.Screen options={{ gestureEnabled: !busy }} />
+      <Stack.Screen options={{ animation: 'slide_from_right', animationMatchesGesture: true, gestureEnabled: !busy }} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.brand}>のどじまん</Text>
-        <Text style={styles.title}>{step === 'done' ? 'パスワードを変更しました' : 'パスワードの再設定'}</Text>
-        <Text style={styles.description}>
-          {step === 'email' ? '登録したメールアドレスに確認コードを送信します。'
-            : step === 'code' ? `${email} 宛ての確認コードと、新しいパスワードを入力してください。`
-              : 'すべての端末からログアウトしました。新しいパスワードでログインしてください。'}
-        </Text>
+        <View style={styles.header}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="ログイン画面に戻る"
+            disabled={busy}
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="chevron-back" size={25} color={colors.mutedText} />
+          </Pressable>
+          <Text style={styles.brand}>のどじまん</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.intro}>
+          <Text style={styles.sectionTitle}>{step === 'done' ? 'パスワードを変更しました' : 'パスワードの再設定'}</Text>
+          <Text style={styles.description}>
+            {step === 'email' ? '登録したメールアドレスに確認コードを送信します。'
+              : step === 'code' ? `${email} 宛ての確認コードと、新しいパスワードを入力してください。`
+                : 'すべての端末からログアウトしました。新しいパスワードでログインしてください。'}
+          </Text>
+        </View>
         {step === 'email' ? (
-          <FormField label="メールアドレス" placeholder="name@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" maxLength={254} />
+          <View style={styles.fields}>
+            <FormField label="メールアドレス" placeholder="name@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" maxLength={254} />
+          </View>
         ) : step === 'code' ? (
           <View style={styles.fields}>
             {localCode ? <Text selectable style={styles.description}>ローカル開発用コード（メール送信なし）：{localCode}</Text> : null}
@@ -98,11 +115,10 @@ export default function ResetPasswordScreen() {
           onPress={step === 'email' ? sendCode : step === 'code' ? resetPassword : () => router.replace('/')} />
         {step === 'code' ? <>
           <AuthButton variant="outline" label="確認コードを再送信" disabled={busy} onPress={sendCode} />
-          <Pressable accessibilityRole="button" disabled={busy} style={styles.link} onPress={() => {
+          <Pressable accessibilityRole="button" disabled={busy} style={styles.switchButton} onPress={() => {
             setStep('email'); setCode(''); setPassword(''); setConfirmation(''); setLocalCode(''); setNotice('');
-          }}><Text style={styles.noticeText}>メールアドレスを変更する</Text></Pressable>
+          }}><Text style={styles.switchText}><Text style={styles.switchLinkText}>メールアドレスを変更する</Text></Text></Pressable>
         </> : null}
-        {step !== 'done' ? <Pressable accessibilityRole="button" disabled={busy} style={styles.link} onPress={() => router.replace('/')}><Text style={styles.noticeText}>ログインに戻る</Text></Pressable> : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -110,12 +126,19 @@ export default function ResetPasswordScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
-  content: { flexGrow: 1, gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xl },
-  brand: { color: colors.text, fontSize: 21, fontWeight: '700', textAlign: 'center', marginBottom: spacing.md },
-  title: { color: colors.text, fontSize: 21, fontWeight: '700' },
-  description: { color: colors.mutedText, fontSize: 13, lineHeight: 20 },
-  fields: { gap: spacing.md },
+  content: { flexGrow: 1, gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xl },
+  header: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  backButton: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center' },
+  pressed: { opacity: 0.7 },
+  headerSpacer: { width: 36 },
+  brand: { color: colors.text, fontSize: 21, fontWeight: '700' },
+  intro: { gap: spacing.xs, paddingTop: spacing.md },
+  sectionTitle: { color: colors.text, fontSize: 21, fontWeight: '700' },
+  description: { color: colors.mutedText, fontSize: 13, lineHeight: 19 },
+  fields: { gap: spacing.md, marginTop: spacing.sm },
   notice: { backgroundColor: colors.primarySoft, borderRadius: 10, padding: spacing.md },
-  noticeText: { color: colors.primary, fontSize: 13, lineHeight: 20 },
-  link: { alignItems: 'center', paddingVertical: spacing.md },
+  noticeText: { color: colors.primary, fontSize: 13, lineHeight: 19 },
+  switchButton: { alignItems: 'center', paddingVertical: spacing.md },
+  switchText: { color: colors.primary, fontSize: 12, textAlign: 'center' },
+  switchLinkText: { fontWeight: '600', textDecorationLine: 'underline' },
 });
