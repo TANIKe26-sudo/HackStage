@@ -61,6 +61,7 @@ Cloudflare版が開発対象です。`npm run dev:api`もCloudflare版を起動�
 - `GET /api/matches/:id/events`：Bearer認証つきSSE。`changed`でメッセージ番号・件数と既読位置の変更を通知します。本文は通常APIから取得してください。約60秒ごとに再接続し、`heartbeat`は無視します。ブロック・停止・制限時は切断します。
 - `DELETE /api/matches/:id/messages`：会話履歴を非表示にし、30日後に削除します。双方に反映されます。
 - `GET /api/daily`、`GET /api/daily/answers`、`POST /api/daily/answers`（`topicId`, `answer`）：日本時間の今日の課題に回答します。過去・未来の課題への回答は受け付けません。
+- Cloudflare版のお題は「趣味はなに？」に固定しています。日付が変わっても質問文は変わりません。日ごとに課題ID・回答・達成状況を管理し、既存の当日課題はIDと回答を保持して固定文へ置き換えます。運営画面は閲覧のみで、`POST /admin/daily-topics`による登録・変更は`409 daily_topic_fixed`を返します。
 - `GET /api/matches/:id/progress`：双方が発言した日数と、双方が回答した課題数を計算します。連投数は条件に使いません。
 
 | 段階 | 相互発言日数 | 共同回答数 |
@@ -118,7 +119,7 @@ AI推定では、認証済みの`GET /api/classifications/throat/references`か�
 | 役割 | 操作 |
 |---|---|
 | users | 利用者一覧・利用停止／再開 |
-| content | デイリー課題の一覧・登録・更新 |
+| content | デイリー課題の一覧（現在は質問固定のため登録・更新不可） |
 | safety | 通報・勧誘検知・異議申し立て・期限付き利用制限 |
 | audit | 監査・閲覧記録・運用状況・スタッフ権限管理 |
 

@@ -1,10 +1,9 @@
 import { streamSSE } from 'hono/streaming';
 import { authenticate, audit, fail, id, input, limited, member, now, notify, page, rate, text, stageProgress, type App, type Env, type Row } from './core.js';
-export const today = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+import { dailyTopic, today } from './daily-topic.js';
+export { today } from './daily-topic.js';
 export async function dispatchDaily(env: Env) {
-    const topic = await env.DB.prepare('SELECT id,title FROM daily_topics WHERE topic_date=?').bind(today()).first<Row>();
-    if (!topic)
-        return;
+    const topic = await dailyTopic(env);
     let offset = 0;
     while (true) {
         const users = await env.DB.prepare("SELECT id FROM users WHERE status='active' ORDER BY id LIMIT 100 OFFSET ?").bind(offset).all<Row>();
@@ -144,7 +143,7 @@ export function communicationRoutes(app: App) {
         return c.json({ cleared: true });
     });
     app.get('/api/daily', async (c) => {
-        const topic = await c.env.DB.prepare('SELECT * FROM daily_topics WHERE topic_date=?').bind(today()).first<Row>();
+        const topic = await dailyTopic(c.env);
         const answer = topic ? await c.env.DB.prepare('SELECT answer,created_at FROM daily_answers WHERE user_id=? AND topic_id=?').bind(c.get('userId'), topic.id).first() : null;
         return c.json({ topic, answer, date: today() });
     });

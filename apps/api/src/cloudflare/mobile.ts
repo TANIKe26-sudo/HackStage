@@ -1,7 +1,7 @@
 import { fail, input, limited, member, now, rate, stageProgress, text, type App, type Ctx, type Row } from './core.js';
 import { publicProfile } from './profiles.js';
 import { mayView } from './media.js';
-import { today } from './communication.js';
+import { dailyTopic, today } from './daily-topic.js';
 import { HTTPException } from 'hono/http-exception';
 
 async function latestSwipe(c: Ctx) {
@@ -97,7 +97,7 @@ export function registerMobileRoutes(app: App) {
     });
     app.get('/api/matches/:id/daily', async c => {
         const match = await member(c, c.req.param('id')), me = c.get('userId');
-        const topic = await c.env.DB.prepare('SELECT * FROM daily_topics WHERE topic_date=?').bind(today()).first<Row>();
+        const topic = await dailyTopic(c.env);
         const answer = topic ? await c.env.DB.prepare('SELECT answer FROM daily_answers WHERE user_id=? AND topic_id=?').bind(me, topic.id).first() : null;
         const otherAnswer = topic ? await c.env.DB.prepare('SELECT 1 FROM daily_answers WHERE user_id=? AND topic_id=?').bind(match.other, topic.id).first() : null;
         const messages = await c.env.DB.prepare(`SELECT sender_id,body FROM messages WHERE match_id=? AND deleted_at IS NULL AND date(created_at,'+9 hours')=?`).bind(match.id, today()).all<Row>();
