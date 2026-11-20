@@ -1,5 +1,5 @@
 import { admin, audit, blocked, fail, hashPassword, id, input, ip, now, notify, page, rate, text, tokenHash, verifyPassword, type App, type Row } from './core.js';
-import { dispatchDaily, today } from './communication.js';
+import { dailyTopic } from './daily-topic.js';
 import { adminHtml } from './admin-ui.js';
 export function adminRoutes(app: App) {
     app.get('/admin', c => { c.header('Cache-Control', 'no-store'); c.header('X-Content-Type-Options', 'nosniff'); c.header('Referrer-Policy', 'no-referrer'); return c.html(adminHtml); });
@@ -86,17 +86,10 @@ export function adminRoutes(app: App) {
     });
     app.get('/admin/users/:id/limits', async (c) => { await admin(c, ['safety', 'users']); return c.json(await c.env.DB.prepare('SELECT * FROM user_limits WHERE user_id=? ORDER BY created_at DESC').bind(c.req.param('id')).all()); });
     app.get('/api/restrictions', async (c) => c.json(await c.env.DB.prepare('SELECT id,scope,reason,expires_at FROM user_limits WHERE user_id=? AND revoked_at IS NULL AND expires_at>?').bind(c.get('userId'), now()).all()));
-    app.get('/admin/daily-topics', async (c) => { await admin(c, ['content']); const { limit, offset } = page(c); return c.json(await c.env.DB.prepare('SELECT * FROM daily_topics ORDER BY topic_date DESC LIMIT ? OFFSET ?').bind(limit, offset).all()); });
+    app.get('/admin/daily-topics', async (c) => { await admin(c, ['content']); await dailyTopic(c.env); const { limit, offset } = page(c); return c.json(await c.env.DB.prepare('SELECT * FROM daily_topics ORDER BY topic_date DESC LIMIT ? OFFSET ?').bind(limit, offset).all()); });
     app.post('/admin/daily-topics', async (c) => {
         await admin(c, ['content']);
-        const body = await input(c), date = text(body.date, 10, true), title = text(body.title, 120, true), prompt = text(body.prompt, 1000, true);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date)
-            fail(400, 'invalid_topic_date');
-        await c.env.DB.prepare('INSERT INTO daily_topics(id,topic_date,title,prompt,created_by,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(topic_date) DO UPDATE SET title=excluded.title,prompt=excluded.prompt,created_by=excluded.created_by').bind(id(), date, title, prompt, c.get('actorId'), now()).run();
-        await audit(c.env, 'daily_topic_saved', c.get('actorId'), date);
-        if (date === today())
-            c.executionCtx.waitUntil(dispatchDaily(c.env));
-        return c.json({ ok: true });
+        return fail(409, 'daily_topic_fixed');
     });
     app.post('/api/blocks', async (c) => {
         const target = text((await input(c)).userId, 100, true), me = c.get('userId');

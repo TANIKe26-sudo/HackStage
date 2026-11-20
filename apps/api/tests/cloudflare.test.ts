@@ -9,6 +9,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { encode as encodePng } from 'fast-png';
 import { app, maintenance } from '../src/cloudflare.js';
 import { dispatchPush } from '../src/cloudflare/communication.js';
+import { dailyTopic, today, FIXED_DAILY_QUESTION } from '../src/cloudflare/daily-topic.js';
 import type { Env } from '../src/cloudflare/core.js';
 import { dispatchAccountDeletions } from '../src/cloudflare/appwrite.js';
 import { cleanupCaptureUploads } from '../src/cloudflare/capture-uploads.js';
@@ -545,12 +546,50 @@ test('expiring restrictions, notification fan-out, daily deduplication and reten
     // No external push requests are made by this test.
     f.sqlite.prepare('DELETE FROM push_devices').run();
     f.sqlite.prepare('DELETE FROM push_jobs').run();
-    const date = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
-    await f.request('/admin/daily-topics', { method: 'POST', key: f.env.ADMIN_CONTENT_KEY, body: { date, title: '今日の話題', prompt: '好きな食べ物は？' } });
     await Promise.all(f.pending);
     await maintenance(f.env);
     await maintenance(f.env);
     assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM notifications WHERE kind='daily'").get()!.n, 2);
+});
+test('fixed daily question survives date changes and previously scheduled questions', async () => {
+    const f = fixture();
+    f.sqlite.prepare('INSERT INTO daily_topics(id,topic_date,title,prompt,created_by,created_at) VALUES(?,?,?,?,?,?)')
+        .run('scheduled', '2030-01-02', '別のお題', '好きな食べ物は？', 'test', new Date().toISOString());
+    const first = await dailyTopic(f.env, '2030-01-01');
+    const next = await dailyTopic(f.env, '2030-01-02');
+    assert.notEqual(first.id, next.id, 'Daily completion remains independent');
+    assert.equal(next.id, 'scheduled');
+    for (const topic of [first, next]) {
+        assert.equal(topic.title, FIXED_DAILY_QUESTION);
+        assert.equal(topic.prompt, '趣味はなに？');
+    }
+    assert.equal((await dailyTopic(f.env, '2030-01-01')).id, first.id);
+    f.sqlite.close();
+});
+test('daily and chat APIs serve the fixed question, preserve answers, and reject operator edits', async () => {
+    const f = fixture(), { a, matchId } = await f.pair();
+    const result = await f.request('/api/daily', { token: a.token });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.topic.prompt, '趣味はなに？');
+    const topicId = result.body.topic.id;
+    assert.equal((await f.request('/api/daily/answers', { method: 'POST', token: a.token, body: { topicId, answer: '読書です' } })).status, 200);
+    f.sqlite.prepare('UPDATE daily_topics SET title=?,prompt=? WHERE id=?').run('変更前', '古い質問', topicId);
+    const chat = await f.request(`/api/matches/${matchId}/daily`, { token: a.token });
+    assert.equal(chat.status, 200);
+    assert.equal(chat.body.topic.prompt, '趣味はなに？');
+    assert.equal(chat.body.topic.id, topicId);
+    assert.equal(chat.body.answer.answer, '読書です');
+    assert.equal(chat.body.tasks['answer-topic'], true);
+    const edit = await f.request('/admin/daily-topics', { method: 'POST', key: f.env.ADMIN_CONTENT_KEY, body: { date: today(), title: '別のお題', prompt: '別の質問' } });
+    assert.equal(edit.status, 409);
+    assert.equal(edit.body.error, 'daily_topic_fixed');
+    const reread = await f.request('/api/daily', { token: a.token });
+    assert.equal(reread.body.topic.prompt, '趣味はなに？');
+    assert.equal(reread.body.answer.answer, '読書です');
+    const html = await f.request('/admin');
+    assert.ok(html.body.includes('お題は「趣味はなに？」に固定'));
+    assert.ok(!html.body.includes('id="daily"'));
+    f.sqlite.close();
 });
 test('backup maintenance blocks writes and automatically expires', async () => {
     const f = fixture(), a = await f.account();
