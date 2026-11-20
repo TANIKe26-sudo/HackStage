@@ -1,12 +1,36 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { PanResponder, Pressable, StyleSheet, Text, View, type GestureResponderEvent, type PanResponderGestureState } from 'react-native';
 
 import { colors, spacing } from '../../../theme/tokens';
+import { candidateSwipeAction } from '../candidateSwipeAction';
 
-export function DiscoverEmptyState({ onRestart }: { onRestart: () => void }) {
+type DiscoverEmptyStateProps = {
+  onRestart: () => void;
+  onGoBack?: () => void;
+  backDisabled?: boolean;
+};
+
+export function DiscoverEmptyState({ onRestart, onGoBack, backDisabled = false }: DiscoverEmptyStateProps) {
+  const panResponder = useMemo(() => {
+    const shouldHandleSwipe = (_event: GestureResponderEvent, gesture: PanResponderGestureState) =>
+      Boolean(onGoBack) && !backDisabled && gesture.numberActiveTouches === 1 &&
+      gesture.dx > 10 && gesture.dx > Math.abs(gesture.dy);
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: shouldHandleSwipe,
+      onMoveShouldSetPanResponderCapture: shouldHandleSwipe,
+      onPanResponderRelease: (_event, gesture) => {
+        if (!backDisabled && candidateSwipeAction(gesture, Boolean(onGoBack)) === 'back') onGoBack?.();
+      },
+    });
+  }, [onGoBack, backDisabled]);
+
   return (
-    <View style={styles.emptyState}>
+    <View collapsable={false} {...panResponder.panHandlers} style={styles.emptyState}>
       <Text style={styles.title}>今日の候補を見終わりました</Text>
-      <Text style={styles.description}>新しい相手が登録されるまで、しばらくお待ちください。</Text>
+      <Text style={styles.description}>{onGoBack
+        ? '右にスワイプすると、1つ前のプロフィールに戻れます。'
+        : '新しい相手が登録されるまで、しばらくお待ちください。'}</Text>
       <Pressable
         accessibilityRole="button"
         onPress={onRestart}
@@ -33,6 +57,7 @@ const styles = StyleSheet.create({
   description: {
     color: colors.mutedText,
     fontSize: 14,
+    textAlign: 'center',
   },
   restartButton: {
     minHeight: 44,

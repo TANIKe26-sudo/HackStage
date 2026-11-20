@@ -15,6 +15,8 @@ import { cleanupCaptureUploads } from '../src/cloudflare/capture-uploads.js';
 import { preparedJpeg } from '../src/cloudflare/prepared-images.js';
 import { comparisonSheet } from '../../mobile/src/features/auth/api/comparisonSheet.js';
 import { decode as decodePng } from 'fast-png';
+import { candidateSwipeAction } from '../../mobile/src/features/main/candidateSwipeAction.js';
+import { loadProtectedPhoto } from '../../mobile/src/features/main/api/protectedPhoto.js';
 function fixture() {
     const sqlite = new DatabaseSync(':memory:');
     sqlite.exec('PRAGMA foreign_keys=ON');
@@ -60,6 +62,40 @@ function fixture() {
     };
     return { sqlite, env, objects, request, account, photo, pair, pending, ctx };
 }
+test('right swipes go back only with history and never send a like', () => {
+    for (const gesture of [{ dx: 150, dy: 3, vx: 0.2 }, { dx: 45, dy: 2, vx: 1 }]) {
+        assert.equal(candidateSwipeAction(gesture, true), 'back');
+        assert.equal(candidateSwipeAction(gesture, false), null);
+    }
+    assert.equal(candidateSwipeAction({ dx: -150, dy: 3, vx: -0.2 }, false), 'pass');
+    assert.equal(candidateSwipeAction({ dx: -45, dy: 2, vx: -1 }, true), 'pass');
+    assert.equal(candidateSwipeAction({ dx: 90, dy: 150, vx: 1 }, true), null);
+    assert.equal(candidateSwipeAction({ dx: 20, dy: 2, vx: 0.1 }, true), null);
+});
+
+test('private photo loading sends authentication and renders only successful image bytes', async t => {
+    const original = globalThis.fetch;
+    t.after(() => { globalThis.fetch = original; });
+    const dataUrl = jpegData(80, 100), bytes = Buffer.from(dataUrl.split(',')[1], 'base64');
+    let requestHeaders: Headers | undefined, requestUrl = '', count = 0;
+    globalThis.fetch = async (url, init) => {
+        requestUrl = String(url); requestHeaders = new Headers(init?.headers); count++;
+        assert.equal(init?.cache, 'no-store');
+        return new Response(bytes, { headers: { 'content-type': 'image/jpeg' } });
+    };
+    const signal = new AbortController().signal;
+    assert.equal(await loadProtectedPhoto('https://api.example.test/', 'photo/one', 'test-session', signal), dataUrl);
+    assert.equal(requestUrl, 'https://api.example.test/api/captures/photo%2Fone/image');
+    assert.equal(requestHeaders!.get('authorization'), 'Bearer test-session');
+    assert.equal(requestHeaders!.get('user-agent'), 'Nodobito-Mobile/1.0');
+    await loadProtectedPhoto('https://api.example.test', 'photo/one', 'new-session', signal);
+    assert.equal(requestHeaders!.get('authorization'), 'Bearer new-session');
+    assert.equal(count, 2, 'A fresh session must fetch again instead of sharing cached private bytes');
+    globalThis.fetch = async () => new Response('forbidden', { status: 403 });
+    await assert.rejects(() => loadProtectedPhoto('https://api.example.test', 'photo', 'test', signal));
+    globalThis.fetch = async () => new Response('<html>error</html>', { headers: { 'content-type': 'text/html' } });
+    await assert.rejects(() => loadProtectedPhoto('https://api.example.test', 'photo', 'test', signal));
+});
 const pngData = () => `data:image/png;base64,${Buffer.from(encodePng({ width: 100, height: 200, data: new Uint8Array(100 * 200 * 4).fill(200) })).toString('base64')}`;
 
 function providerMock(f: ReturnType<typeof fixture>, t: { after: (fn: () => void) => void }) {
@@ -623,6 +659,80 @@ function jpegData(width: number, height: number, color = [110, 130, 150]) {
     for (let i = 0; i < data.length; i += 4) { data.set(color, i); data[i + 3] = 255; }
     return `data:image/jpeg;base64,${jpeg.encode({ width, height, data }, 75).data.toString('base64')}`;
 }
+
+test('last swipe is recovered after a new login when the candidate feed is empty', async () => {
+    const f = fixture(), a = await f.account(), b = await f.account(), c = await f.account();
+    f.sqlite.prepare("UPDATE profiles SET display_name='Candidate',birth_year=1995").run();
+    assert.equal((await f.request('/api/discover?reuseUnswiped=true', { token: a.token })).body.candidates.length, 2);
+    for (const user of [b, c]) assert.equal((await f.request('/api/passes', { token: a.token, method: 'POST', body: { toUserId: user.id } })).status, 200);
+    f.sqlite.prepare('UPDATE mobile_profile_passes SET created_at=? WHERE user_id=? AND other_id=?').run('2026-01-01T00:00:00Z', a.id, b.id);
+    f.sqlite.prepare('UPDATE mobile_profile_passes SET created_at=? WHERE user_id=? AND other_id=?').run('2026-01-02T00:00:00Z', a.id, c.id);
+    assert.equal((await f.request('/api/discover?reuseUnswiped=true', { token: a.token })).body.candidates.length, 0);
+    const login = await f.request('/auth/login', { method: 'POST', body: { email: a.email, password: 'a-valid-password' } });
+    assert.equal(login.status, 200);
+    const recovered = await f.request('/api/swipes/last', { token: login.body.token });
+    assert.deepEqual(recovered.body.lastSwipe, { candidateId: c.id, undoable: true });
+    assert.equal(recovered.headers.get('cache-control'), 'private, no-store');
+    const wrong = await f.request('/api/swipes/undo', { token: login.body.token, method: 'POST', body: { toUserId: b.id } });
+    assert.equal(wrong.status, 409);
+    const undone = await f.request('/api/swipes/undo', { token: login.body.token, method: 'POST', body: { toUserId: c.id } });
+    assert.equal(undone.status, 200); assert.equal(undone.body.profile.user_id, c.id);
+    assert.deepEqual((await f.request('/api/discover?reuseUnswiped=true', { token: login.body.token })).body.candidates.map((p: { user_id: string }) => p.user_id), [c.id]);
+    assert.deepEqual((await f.request('/api/swipes/last', { token: login.body.token })).body.lastSwipe, { candidateId: b.id, undoable: true });
+    assert.equal((await f.request('/api/swipes/last', { token: b.token })).body.lastSwipe, null);
+});
+
+test('last swipe distinguishes pending likes from matches and unavailable profiles', async () => {
+    const f = fixture(), a = await f.account(), b = await f.account();
+    assert.equal((await f.request('/api/swipes/last')).status, 401);
+    assert.equal((await f.request('/api/swipes/last', { token: a.token })).body.lastSwipe, null);
+    await f.request('/api/likes', { token: a.token, method: 'POST', body: { toUserId: b.id } });
+    assert.deepEqual((await f.request('/api/swipes/last', { token: a.token })).body.lastSwipe, { candidateId: b.id, undoable: true });
+    assert.equal((await f.request('/api/swipes/undo', { token: a.token, method: 'POST', body: { toUserId: b.id } })).status, 200);
+    assert.equal((await f.request('/api/swipes/last', { token: a.token })).body.lastSwipe, null);
+    await f.request('/api/likes', { token: a.token, method: 'POST', body: { toUserId: b.id } });
+    await f.request('/api/likes', { token: b.token, method: 'POST', body: { toUserId: a.id } });
+    assert.equal((await f.request('/api/swipes/last', { token: a.token })).body.lastSwipe, null);
+    assert.equal((await f.request('/api/swipes/last', { token: a.token })).body.profile, null);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()!.n, 1);
+    assert.equal((await f.request('/api/swipes/undo', { token: a.token, method: 'POST', body: { toUserId: b.id } })).body.error, 'swipe_undo_matched');
+    await f.request('/api/passes', { token: b.token, method: 'POST', body: { toUserId: a.id } });
+    await f.request('/api/blocks', { token: a.token, method: 'POST', body: { userId: b.id } });
+    const blockedHistory = await f.request('/api/swipes/last', { token: b.token });
+    assert.equal(blockedHistory.body.lastSwipe, null);
+    assert.equal(blockedHistory.body.profile, null);
+});
+
+test('last swipe does not restore a contact hidden by either person', async () => {
+    const f = fixture(), a = await f.account(), b = await f.account();
+    await f.request('/api/passes', { token: a.token, method: 'POST', body: { toUserId: b.id } });
+    for (const [hider, hidden] of [[a, b], [b, a]]) {
+        await f.request('/api/contacts/hide', { token: hider.token, method: 'POST', body: { contacts: [hidden.email] } });
+        const history = await f.request('/api/swipes/last', { token: a.token });
+        assert.equal(history.body.profile, null);
+        assert.equal(history.body.lastSwipe, null);
+        await f.request('/api/contacts/hide', { token: hider.token, method: 'DELETE' });
+    }
+});
+
+test('swipe back skips matched people and restores the previous unmatched candidate', async () => {
+    const f = fixture(), a = await f.account(), b = await f.account(), c = await f.account();
+    await f.request('/api/passes', { token: a.token, method: 'POST', body: { toUserId: b.id } });
+    f.sqlite.prepare('UPDATE mobile_profile_passes SET created_at=? WHERE user_id=?').run('2000-01-01T00:00:00Z', a.id);
+    await f.request('/api/likes', { token: a.token, method: 'POST', body: { toUserId: c.id } });
+    await f.request('/api/likes', { token: c.token, method: 'POST', body: { toUserId: a.id } });
+    // A matched person must be excluded even if they also have a newer pass.
+    await f.request('/api/passes', { token: a.token, method: 'POST', body: { toUserId: c.id } });
+    const history = await f.request('/api/swipes/last', { token: a.token });
+    assert.equal(history.body.profile.user_id, b.id);
+    assert.deepEqual(history.body.lastSwipe, { candidateId: b.id, undoable: true });
+    const restored = await f.request('/api/swipes/undo', { token: a.token, method: 'POST', body: { toUserId: b.id } });
+    assert.equal(restored.status, 200);
+    assert.equal(restored.body.profile.user_id, b.id);
+    assert.equal((await f.request('/api/swipes/last', { token: a.token })).body.profile, null);
+    assert.equal((await f.request('/api/swipes/undo', { token: a.token, method: 'POST', body: { toUserId: c.id } })).body.error, 'swipe_undo_matched');
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()!.n, 1);
+});
 
 test('prepared photo uploads stay private until every stage exists and preserve viewing grants', async () => {
     const f = fixture(), a = await f.account(), b = await f.account();

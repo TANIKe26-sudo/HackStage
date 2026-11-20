@@ -18,6 +18,7 @@ export default function MainLayout() {
       fullScreenGestureEnabled: false,
       gestureResponseDistance: { start: 24 },
     }}>
+      <Stack.Screen name="home" options={{ gestureEnabled: false }} />
       <Stack.Screen
         name="chat/[conversationId]"
         options={{
