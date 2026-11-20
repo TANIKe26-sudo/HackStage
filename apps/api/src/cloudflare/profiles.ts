@@ -221,7 +221,9 @@ export function profileRoutes(app: App) {
             if (!credential || !await verifyPassword(password(body.password), credential.password_hash)) fail(401, 'reauthentication_failed');
         }
         const captures = await c.env.DB.prepare('SELECT object_key,original_key FROM captures WHERE owner_id=?').bind(me).all<Row>();
-        const keys = [...new Set(captures.results.flatMap(r => [r.object_key, r.original_key]).filter(Boolean))] as string[];
+        const drafts = await c.env.DB.prepare('SELECT id FROM capture_uploads WHERE owner_id=?').bind(me).all<Row>();
+        const keys = [...new Set([...captures.results.flatMap(r => [r.object_key, r.original_key]).filter(Boolean),
+            ...drafts.results.flatMap(r => Array.from({ length: 5 }, (_, stage) => `${me}/variants/${r.id}/${stage}.jpg`))])] as string[];
         for (let i = 0; i < keys.length; i += 100)
             await imageStore(c.env).delete(keys.slice(i, i + 100));
         await c.env.DB.batch([

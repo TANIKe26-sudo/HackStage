@@ -9,5 +9,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src/cloudflare.ts", "src/cloudflare/**/*.ts"]
+  "include": ["src/cloudflare.ts", "src/cloudflare/**/*.ts", "tests/**/*.ts"]
 }

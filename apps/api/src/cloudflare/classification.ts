@@ -1,6 +1,7 @@
 import { imageStore } from './image-store.js';
 import { Buffer } from 'node:buffer';
 import { comparisonImage, decodeImage } from './classification-image.js';
+import { preparedJpeg } from './prepared-images.js';
 import { audit, fail, input, limited, rate, type App, type Ctx } from './core.js';
 
 export const referenceKeys = { present: 'system/throat-references/v1/present.jpg', absent: 'system/throat-references/v1/absent.jpg' };
@@ -45,12 +46,17 @@ export function parseClassification(raw: unknown) {
     } catch { return fallback; }
 }
 export async function classifyNeck(c: Ctx, bytes: Uint8Array, captureId?: string) {
+    if (c.env.APP_ENV === 'production') return fail(400, 'classification_comparison_required');
     if (!c.env.AI) return fail(503, 'classification_service_not_configured');
     const [present, absent] = await Promise.all([imageStore(c.env).get(referenceKeys.present), imageStore(c.env).get(referenceKeys.absent)]);
     if (!present || !absent) return fail(503, 'classification_references_not_configured');
     let image: Uint8Array;
     try { image = comparisonImage(new Uint8Array(await present.arrayBuffer()), new Uint8Array(await absent.arrayBuffer()), bytes); }
     catch { return fail(503, 'classification_image_unavailable'); }
+    return inferComparison(c, image, captureId);
+}
+async function inferComparison(c: Ctx, image: Uint8Array, captureId?: string) {
+    if (!c.env.AI) return fail(503, 'classification_service_not_configured');
     let result: { response?: unknown }, timer: ReturnType<typeof setTimeout> | undefined;
     try {
         result = await Promise.race([
@@ -70,11 +76,32 @@ export async function classifyNeck(c: Ctx, bytes: Uint8Array, captureId?: string
     return { ...suggestion, requiresUserConfirmation: true, referenceVersion: 'v1', source: 'workers-ai-reference-comparison' };
 }
 export function classificationRoutes(app: App) {
+    app.get('/api/classifications/throat/references', async c => {
+        await limited(c, 'posting');
+        await rate(c, 'classify-references', c.get('userId'), 30, 3600);
+        if (!c.env.AI) return fail(503, 'classification_service_not_configured');
+        const [present, absent] = await Promise.all([imageStore(c.env).get(referenceKeys.present), imageStore(c.env).get(referenceKeys.absent)]);
+        if (!present || !absent) return fail(503, 'classification_references_not_configured');
+        c.header('Cache-Control', 'private, no-store');
+        return c.json({ referenceVersion: 'v1', present: `data:image/jpeg;base64,${Buffer.from(await present.arrayBuffer()).toString('base64')}`,
+            absent: `data:image/jpeg;base64,${Buffer.from(await absent.arrayBuffer()).toString('base64')}` });
+    });
     app.post('/api/classifications/throat', async c => {
         const body = await input(c);
         if (body.consent !== true) return fail(400, 'classification_consent_required');
         await limited(c, 'posting');
         await rate(c, 'classify', c.get('userId'), 6, 3600);
+        if (body.comparisonDataUrl !== undefined) {
+            if (body.referenceVersion !== 'v1') fail(400, 'classification_comparison_required');
+            const image = preparedJpeg(body.comparisonDataUrl);
+            if (image.width !== 1184 || image.height !== 512) fail(400, 'invalid_image_dimensions');
+            const refs = await c.env.DB.prepare('SELECT object_key FROM image_objects WHERE object_key IN (?,?)').bind(referenceKeys.present, referenceKeys.absent).all();
+            if (refs.results.length !== 2) fail(503, 'classification_references_not_configured');
+            // A client-prepared contact sheet is untrusted input. The model only
+            // suggests a label which the user confirms; it never grants access.
+            return c.json(await inferComparison(c, image.bytes));
+        }
+        if (c.env.APP_ENV === 'production') fail(400, 'classification_comparison_required');
         if (typeof body.dataUrl !== 'string' || body.dataUrl.length > 4_000_000) return fail(413, 'capture_too_large');
         const encoded = body.dataUrl.match(/^data:image\/(?:jpeg|png);base64,([A-Za-z0-9+/]+={0,2})$/);
         if (!encoded) return fail(400, 'invalid_capture');

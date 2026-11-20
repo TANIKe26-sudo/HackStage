@@ -97,6 +97,7 @@ export default function SignUpScreen() {
           bio: profile?.bio ?? '',
         },
         profilePhotoDataUrl,
+        profilePhotoUri,
       );
       setProfilePhotoDataUrl(null);
       setProfilePhotoClassification(null);

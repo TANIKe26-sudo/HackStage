@@ -353,6 +353,8 @@ npm run typecheck:cloudflare --workspace @nodobito/api
 
 本番環境は`wrangler.jsonc`の`env.production`で設定しています。D1は`hackstage_nodo`を使用し、ローカル用の`nodobito-db`とは分かれています。ローカルの登録データと`.dev.vars`は本番へ自動で移りません。別のCloudflareアカウントで使う場合は、本番の`account_id`、`database_name`、`database_id`を差し替えてください。
 
+Workers Freeではサーバーの画像加工がCPU上限を超えるため、写真の5段階の切り出しとAI比較画像の作成はスマホ側で行います。`0009_prepared_capture_uploads.sql`を適用し、更新したAPIとモバイルを一緒に使用してください。詳細は[画像の保存・配信手順](docs/backend.md#画像)を参照してください。
+
 初回は以下を`apps/api`で実行します。ブラウザでCloudflareにログイン済みでも、Wranglerのログインは別途必要です。
 
 ```powershell
