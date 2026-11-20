@@ -591,6 +591,78 @@ test('daily and chat APIs serve the fixed question, preserve answers, and reject
     assert.ok(!html.body.includes('id="daily"'));
     f.sqlite.close();
 });
+test('daily answers reach only the selected conversation in both directions, with unread and warning notifications', async () => {
+    const f = fixture(), { a, b, matchId } = await f.pair(), third = await f.account();
+    const topicId = (await f.request('/api/daily', { token: a.token })).body.topic.id;
+    const otherMatch = crypto.randomUUID(), [low, high] = [a.id, third.id].sort();
+    f.sqlite.prepare('INSERT INTO matches(id,user_low,user_high,created_at) VALUES(?,?,?,?)').run(otherMatch, low, high, new Date().toISOString());
+    await f.request('/api/push-devices', { method: 'POST', token: b.token, body: { expoPushToken: 'ExpoPushToken[daily-test]' } });
+    const send = (token: string, answer: string, target = matchId) => f.request('/api/daily/answers', { method: 'POST', token, body: { topicId, answer, matchId: target } });
+    const first = await send(a.token, '読書です');
+    assert.equal(first.status, 200);
+    assert.equal(first.body.sent, true);
+    const notifications = f.sqlite.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND kind='message'").get(b.id)!.n;
+    const repeated = await Promise.all([send(a.token, '読書です'), send(a.token, '読書です')]);
+    assert.ok(repeated.every(r => r.status === 200 && r.body.sent === false));
+    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND kind='message'").get(b.id)!.n, notifications);
+    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM push_jobs WHERE user_id=? AND kind='message'").get(b.id)!.n, 1);
+    const firstConcurrent = await Promise.all([send(b.token, '音楽です'), send(b.token, '音楽です')]);
+    assert.ok(firstConcurrent.every(r => r.status === 200));
+    assert.equal(firstConcurrent.filter(r => r.body.sent).length, 1);
+    const page = await f.request(`/api/matches/${matchId}/messages`, { token: b.token });
+    assert.deepEqual(page.body.messages.map((m: any) => [m.sender_id, m.body]), [
+        [a.id, '【今日のお題】趣味はなに？\n読書です'], [b.id, '【今日のお題】趣味はなに？\n音楽です'],
+    ]);
+    assert.equal((await f.request(`/api/matches/${otherMatch}/messages`, { token: a.token })).body.messages.length, 0);
+    const inbox = await f.request('/api/matches', { token: b.token });
+    assert.equal(inbox.body.matches.find((m: any) => m.id === matchId).unread_count, 1);
+    const daily = await f.request(`/api/matches/${matchId}/daily`, { token: a.token });
+    assert.equal(daily.body.tasks['answer-topic'], true);
+    assert.equal(daily.body.tasks['ask-question'], false, 'The automatic question header must not complete conversation tasks');
+    assert.equal(daily.body.tasks['receive-reply'], false);
+    assert.equal(daily.body.progress.mutualDays, 0, 'Automatic answers are not ordinary conversation days');
+    assert.equal(daily.body.progress.sharedAnswers, 1);
+    const changed = await send(a.token, 'https://example.test を見ること');
+    assert.equal(changed.body.sent, true);
+    assert.ok(changed.body.warning);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM messages WHERE match_id=?').get(matchId)!.n, 3);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM safety_flags WHERE message_id=?').get(changed.body.messageId)!.n, 1);
+    assert.equal(f.sqlite.prepare('SELECT answer FROM daily_answers WHERE user_id=? AND topic_id=?').get(a.id, topicId)!.answer, 'https://example.test を見ること');
+    assert.equal((await send(a.token, '読書です', otherMatch)).body.sent, true, 'Another conversation has an independent delivery marker');
+    f.sqlite.close();
+});
+test('daily answer sharing enforces membership, blocks, restrictions and the normal message rate limit', async () => {
+    const f = fixture(), { a, b, matchId } = await f.pair(), outsider = await f.account();
+    const topicId = (await f.request('/api/daily', { token: a.token })).body.topic.id;
+    const send = (token: string, target = matchId, topic = topicId) => f.request('/api/daily/answers', { method: 'POST', token, body: { topicId: topic, answer: '読書', matchId: target } });
+    assert.equal((await send(outsider.token)).status, 404);
+    assert.equal((await send(a.token, 'missing-match')).status, 404);
+    assert.equal((await send(a.token, matchId, 'missing-topic')).status, 400);
+    const restricted = await f.request(`/admin/users/${a.id}/limits`, { method: 'POST', key: f.env.ADMIN_SAFETY_KEY, body: { scope: 'messaging', reason: 'test', expiresAt: new Date(Date.now() + 3600000).toISOString() } });
+    assert.equal(restricted.status, 201);
+    assert.equal((await send(a.token)).status, 403);
+    f.sqlite.prepare('DELETE FROM user_limits').run();
+    for (let n = 0; n < 30; n++) assert.equal((await f.request(`/api/matches/${matchId}/messages`, { method: 'POST', token: a.token, body: { body: 'normal message' } })).status, 201);
+    assert.equal((await send(a.token)).status, 429);
+    await f.request('/api/blocks', { method: 'POST', token: a.token, body: { userId: b.id } });
+    assert.equal((await send(b.token)).status, 404);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM daily_answers').get()!.n, 0);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM daily_answer_deliveries').get()!.n, 0);
+    f.sqlite.close();
+});
+test('daily answer, automatic message and notifications roll back together and can be retried', async () => {
+    const f = fixture(), { a, matchId } = await f.pair();
+    const topicId = (await f.request('/api/daily', { token: a.token })).body.topic.id;
+    const send = () => f.request('/api/daily/answers', { method: 'POST', token: a.token, body: { topicId, answer: '音楽', matchId } });
+    f.sqlite.exec("CREATE TRIGGER fail_daily_notification BEFORE INSERT ON notifications WHEN NEW.kind='message' BEGIN SELECT RAISE(ABORT,'test notification failure'); END");
+    assert.equal((await send()).status, 500);
+    for (const table of ['daily_answers', 'daily_answer_deliveries', 'messages'])
+        assert.equal(f.sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()!.n, 0);
+    f.sqlite.exec('DROP TRIGGER fail_daily_notification');
+    assert.equal((await send()).body.sent, true);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM messages').get()!.n, 1);
+    f.sqlite.close();
+});
 test('backup maintenance blocks writes and automatically expires', async () => {
     const f = fixture(), a = await f.account();
     assert.equal((await f.request('/admin/operations/maintenance', { method: 'POST', key: f.env.ADMIN_AUDIT_KEY, body: { enabled: true } })).status, 200);

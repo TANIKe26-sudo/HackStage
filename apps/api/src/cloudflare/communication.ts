@@ -2,6 +2,7 @@ import { streamSSE } from 'hono/streaming';
 import { authenticate, audit, fail, id, input, limited, member, now, notify, page, rate, text, stageProgress, type App, type Env, type Row } from './core.js';
 import { dailyTopic, today } from './daily-topic.js';
 export { today } from './daily-topic.js';
+const messageWarning = (body: string) => /(https?:\/\/|www\.|投資|暗号資産|仮想通貨|副業|必ず儲かる)/i.test(body) ? '外部リンクや勧誘に注意してください。' : null;
 export async function dispatchDaily(env: Env) {
     const topic = await dailyTopic(env);
     let offset = 0;
@@ -89,7 +90,7 @@ export function communicationRoutes(app: App) {
         await limited(c, 'messaging');
         const match = await member(c, c.req.param('id')), body = text((await input(c)).body, 2000, true), me = c.get('userId');
         await rate(c, 'messages', me, 30, 60);
-        const warning = /(https?:\/\/|www\.|投資|暗号資産|仮想通貨|副業|必ず儲かる)/i.test(body) ? '外部リンクや勧誘に注意してください。' : null, messageId = id();
+        const warning = messageWarning(body), messageId = id();
         await c.env.DB.prepare('INSERT INTO messages(id,match_id,sender_id,body,warning,created_at) VALUES(?,?,?,?,?,?)').bind(messageId, match.id, me, body, warning, now()).run();
         if (warning)
             await c.env.DB.prepare('INSERT INTO safety_flags(id,user_id,message_id,reason,created_at) VALUES(?,?,?,?,?)').bind(id(), me, messageId, 'link_or_solicitation', now()).run();
@@ -155,10 +156,47 @@ export function communicationRoutes(app: App) {
         const body = await input(c), topicId = text(body.topicId, 100, true), answer = text(body.answer, 2000, true);
         await limited(c, 'posting');
         await rate(c, 'daily-answer', c.get('userId'), 10, 3600);
-        if (!await c.env.DB.prepare('SELECT 1 FROM daily_topics WHERE id=? AND topic_date=?').bind(topicId, today()).first())
+        const topic = await c.env.DB.prepare('SELECT prompt FROM daily_topics WHERE id=? AND topic_date=?').bind(topicId, today()).first<Row>();
+        if (!topic)
             fail(400, 'topic_not_today');
-        await c.env.DB.prepare(`INSERT INTO daily_answers(user_id,topic_id,answer,created_at) VALUES(?,?,?,?) ON CONFLICT(user_id,topic_id) DO UPDATE SET answer=excluded.answer`).bind(c.get('userId'), topicId, answer, now()).run();
-        return c.json({ ok: true });
+        const me = c.get('userId'), time = now();
+        const saveAnswer = c.env.DB.prepare(`INSERT INTO daily_answers(user_id,topic_id,answer,created_at) VALUES(?,?,?,?) ON CONFLICT(user_id,topic_id) DO UPDATE SET answer=excluded.answer`).bind(me, topicId, answer, time);
+        // Preserve the personal-answer API for older clients. New clients always name the open conversation.
+        if (body.matchId === undefined) {
+            await saveAnswer.run();
+            return c.json({ ok: true, sent: false });
+        }
+        await limited(c, 'messaging');
+        const match = await member(c, text(body.matchId, 100, true));
+        await rate(c, 'messages', me, 30, 60);
+        const messageId = id(), message = `【今日のお題】${topic!.prompt}\n${answer}`, warning = messageWarning(answer);
+        const payload = JSON.stringify({ matchId: match.id, messageId });
+        // D1 serializes the whole batch: concurrent retries insert only one message, and
+        // the answer, delivery marker, safety flag and notifications commit together.
+        const statements = [
+            c.env.DB.prepare(`INSERT INTO messages(id,match_id,sender_id,body,warning,created_at,daily_topic_id)
+                SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS (
+                  SELECT 1 FROM daily_answer_deliveries WHERE user_id=? AND topic_id=? AND match_id=? AND answer=?)`)
+                .bind(messageId, match.id, me, message, warning, time, topicId, me, topicId, match.id, answer),
+            saveAnswer,
+            c.env.DB.prepare(`INSERT INTO daily_answer_deliveries(user_id,topic_id,match_id,answer,message_id)
+                SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM messages WHERE id=?)
+                ON CONFLICT(user_id,topic_id,match_id) DO UPDATE SET answer=excluded.answer,message_id=excluded.message_id`)
+                .bind(me, topicId, match.id, answer, messageId, messageId),
+            c.env.DB.prepare(`INSERT INTO notifications(id,user_id,kind,payload,created_at)
+                SELECT ?,?,'message',?,? WHERE EXISTS(SELECT 1 FROM messages WHERE id=?)`)
+                .bind(id(), match.other, payload, time, messageId),
+            c.env.DB.prepare(`INSERT INTO push_jobs(id,user_id,kind,payload,created_at,available_at,expo_token)
+                SELECT lower(hex(randomblob(16))),?,'message',?,?,?,expo_token FROM push_devices
+                WHERE user_id=? AND EXISTS(SELECT 1 FROM messages WHERE id=?)`)
+                .bind(match.other, payload, time, time, match.other, messageId),
+        ];
+        if (warning) statements.push(c.env.DB.prepare(`INSERT INTO safety_flags(id,user_id,message_id,reason,created_at)
+            SELECT ?,?,?,'link_or_solicitation',? WHERE EXISTS(SELECT 1 FROM messages WHERE id=?)`)
+            .bind(id(), me, messageId, time, messageId));
+        const results = await c.env.DB.batch(statements);
+        const sent = results[0].meta.changes > 0;
+        return c.json({ ok: true, sent, messageId: sent ? messageId : null, warning });
     });
     app.post('/api/push-devices', async (c) => {
         const token = text((await input(c)).expoPushToken, 300, true);

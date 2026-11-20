@@ -180,7 +180,7 @@ export async function stageProgress(env: Env, matchId: string) {
     const match = await env.DB.prepare('SELECT * FROM matches WHERE id=?').bind(matchId).first<Row>();
     if (!match)
         return fail(404, 'match_not_found');
-    const days = await env.DB.prepare("SELECT COUNT(*) AS n FROM (SELECT date(created_at,'+9 hours') FROM messages WHERE match_id=? AND deleted_at IS NULL GROUP BY date(created_at,'+9 hours') HAVING COUNT(DISTINCT sender_id)=2)").bind(matchId).first<{
+    const days = await env.DB.prepare("SELECT COUNT(*) AS n FROM (SELECT date(created_at,'+9 hours') FROM messages WHERE match_id=? AND deleted_at IS NULL AND daily_topic_id IS NULL GROUP BY date(created_at,'+9 hours') HAVING COUNT(DISTINCT sender_id)=2)").bind(matchId).first<{
         n: number;
     }>();
     const daily = await env.DB.prepare('SELECT COUNT(*) AS n FROM daily_answers a JOIN daily_answers b ON a.topic_id=b.topic_id WHERE a.user_id=? AND b.user_id=?').bind(match.user_low, match.user_high).first<{

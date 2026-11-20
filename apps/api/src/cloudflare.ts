@@ -44,6 +44,8 @@ app.get('/health/ready', async (c) => {
         await c.env.DB.prepare('SELECT object_key FROM image_objects LIMIT 1').first();
         await c.env.DB.prepare('SELECT appwrite_id FROM users LIMIT 1').first();
         await c.env.DB.prepare('SELECT id FROM capture_uploads LIMIT 1').first();
+        await c.env.DB.prepare('SELECT daily_topic_id FROM messages LIMIT 1').first();
+        await c.env.DB.prepare('SELECT message_id FROM daily_answer_deliveries LIMIT 1').first();
         if (usesAppwrite(c.env) && !appwriteConfigured(c.env)) return c.json({ ok: false, database: 'ready', error: 'appwrite_not_configured' }, 503);
         if (!configured(c.env))
             return c.json({ ok: false, database: 'ready', error: 'server_auth_not_configured' }, 503);
