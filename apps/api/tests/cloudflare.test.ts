@@ -11,6 +11,10 @@ import { app, maintenance } from '../src/cloudflare.js';
 import { dispatchPush } from '../src/cloudflare/communication.js';
 import type { Env } from '../src/cloudflare/core.js';
 import { dispatchAccountDeletions } from '../src/cloudflare/appwrite.js';
+import { cleanupCaptureUploads } from '../src/cloudflare/capture-uploads.js';
+import { preparedJpeg } from '../src/cloudflare/prepared-images.js';
+import { comparisonSheet } from '../../mobile/src/features/auth/api/comparisonSheet.js';
+import { decode as decodePng } from 'fast-png';
 function fixture() {
     const sqlite = new DatabaseSync(':memory:');
     sqlite.exec('PRAGMA foreign_keys=ON');
@@ -612,4 +616,84 @@ test('classification provider failure is explicit and owner-only capture classif
     const uploaded = await f.request('/api/captures', { token: a.token, method: 'POST', body: { dataUrl: pngData() } });
     assert.equal((await f.request(`/api/captures/${uploaded.body.id}/classification`, { token: b.token, method: 'POST', body: { consent: true } })).status, 404);
     assert.equal((await f.request('/api/classifications/throat', { token: a.token, method: 'POST', body: { consent: true, dataUrl: 'not-an-image' } })).status, 400);
+});
+
+function jpegData(width: number, height: number, color = [110, 130, 150]) {
+    const data = new Uint8Array(width * height * 4);
+    for (let i = 0; i < data.length; i += 4) { data.set(color, i); data[i + 3] = 255; }
+    return `data:image/jpeg;base64,${jpeg.encode({ width, height, data }, 75).data.toString('base64')}`;
+}
+
+test('prepared photo uploads stay private until every stage exists and preserve viewing grants', async () => {
+    const f = fixture(), a = await f.account(), b = await f.account();
+    const started = await f.request('/api/capture-uploads', { token: a.token, method: 'POST', body: { width: 400, height: 600 } });
+    assert.equal(started.status, 201);
+    const path = `/api/capture-uploads/${started.body.uploadId}`;
+    assert.equal((await f.request(`${path}/stages/0`, { token: b.token, method: 'PUT', body: { dataUrl: jpegData(200, 120) } })).status, 404);
+    assert.equal((await f.request(`${path}/complete`, { token: a.token, method: 'POST', body: {} })).body.error, 'capture_upload_incomplete');
+    assert.equal((await f.request(`${path}/stages/0`, { token: a.token, method: 'PUT', body: { dataUrl: jpegData(400, 600) } })).status, 400);
+    const dims = [[200, 120], [240, 210], [280, 330], [320, 510], [400, 600]];
+    for (let stage = 0; stage < 5; stage++) {
+        assert.equal((await f.request(`${path}/stages/${stage}`, { token: a.token, method: 'PUT', body: { dataUrl: jpegData(...dims[stage] as [number, number]) } })).status, 200);
+        assert.equal((await f.request('/api/me', { token: a.token })).body.profile.profile_photo_capture_id, null);
+    }
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM captures').get()!.n, 0);
+    const completed = await f.request(`${path}/complete`, { token: a.token, method: 'POST', body: {} });
+    assert.equal(completed.status, 201);
+    assert.equal(completed.body.captures.length, 5);
+    assert.equal((await f.request('/api/me', { token: a.token })).body.profile.profile_photo_capture_id, completed.body.id);
+    assert.equal(f.objects.size, 5, 'The full variant is reused as the private original');
+    assert.equal((await f.request(`${path}/stages/0`, { token: a.token, method: 'PUT', body: { dataUrl: jpegData(200, 120) } })).status, 404);
+    f.sqlite.prepare('INSERT INTO discovery_impressions(viewer_id,candidate_id,shown_at,impressions) VALUES(?,?,?,1)').run(b.id, a.id, new Date().toISOString());
+    assert.equal((await f.request(`/api/captures/${completed.body.id}/image`, { token: b.token })).status, 200);
+    assert.equal((await f.request(`/api/captures/${completed.body.captures[4].id}/image`, { token: b.token })).status, 403);
+});
+
+test('abandoned photo uploads expire and deletion removes draft images', async () => {
+    const f = fixture(), a = await f.account();
+    const start = async () => {
+        const r = await f.request('/api/capture-uploads', { token: a.token, method: 'POST', body: { width: 400, height: 600 } });
+        await f.request(`/api/capture-uploads/${r.body.uploadId}/stages/0`, { token: a.token, method: 'PUT', body: { dataUrl: jpegData(200, 120) } });
+        return r.body.uploadId;
+    };
+    const expired = await start();
+    f.sqlite.prepare('UPDATE capture_uploads SET expires_at=? WHERE id=?').run('2000-01-01T00:00:00.000Z', expired);
+    await cleanupCaptureUploads(f.env);
+    assert.equal(f.objects.size, 0);
+    const removed = await start();
+    assert.equal((await f.request(`/api/capture-uploads/${removed}`, { token: a.token, method: 'DELETE' })).status, 200);
+    assert.equal(f.objects.size, 0);
+    await start();
+    assert.equal((await f.request('/api/account/delete', { token: a.token, method: 'POST', body: { password: 'a-valid-password' } })).status, 200);
+    assert.equal(f.objects.size, 0);
+});
+
+test('client contact sheet uses typed arrays without Buffer and retains reference and target order', () => {
+    const source = jpegData(80, 100, [220, 20, 20]), absent = jpegData(80, 100, [20, 220, 20]), target = jpegData(80, 100, [20, 20, 220]);
+    const savedBuffer = globalThis.Buffer;
+    let sheet: string;
+    try { (globalThis as any).Buffer = undefined; sheet = comparisonSheet([source, absent, target]); }
+    finally { globalThis.Buffer = savedBuffer; }
+    const image = decodePng(Buffer.from(sheet!.split(',')[1], 'base64'));
+    assert.equal(image.width, 1184); assert.equal(image.height, 512);
+    for (let panel = 0; panel < 3; panel++) {
+        const pixel = (256 * image.width + panel * 400 + 192) * 4;
+        assert.ok(image.data[pixel + panel] > 200);
+    }
+});
+
+test('prepared comparison reaches AI without decoding on the Worker and is never stored', async () => {
+    const f = fixture(), a = await f.account();
+    const sheet = jpegData(1184, 512), path = '/api/classifications/throat';
+    let calls = 0;
+    f.env.AI = { run: async () => { calls++; return { response: '{"classification":"pending","visibility":"unclear","reason":"ambiguous"}' }; } };
+    for (const key of Object.values(referenceKeys)) await imageStore(f.env).put(key, Buffer.from(jpegData(80, 100).split(',')[1], 'base64'));
+    assert.equal((await f.request('/api/classifications/throat/references')).status, 401);
+    const refs = await f.request('/api/classifications/throat/references', { token: a.token });
+    assert.equal(refs.status, 200); assert.equal(refs.headers.get('cache-control'), 'private, no-store');
+    assert.equal((await f.request(path, { token: a.token, method: 'POST', body: { comparisonDataUrl: sheet, referenceVersion: 'v1' } })).status, 400);
+    const result = await f.request(path, { token: a.token, method: 'POST', body: { comparisonDataUrl: sheet, referenceVersion: 'v1', consent: true } });
+    assert.equal(result.status, 200); assert.equal(result.body.requiresUserConfirmation, true); assert.equal(calls, 1);
+    assert.equal(f.objects.size, 2); assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM captures').get()!.n, 0);
+    assert.throws(() => preparedJpeg('data:image/jpeg;base64,aW52YWxpZA=='));
 });

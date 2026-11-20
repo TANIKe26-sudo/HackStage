@@ -10,6 +10,7 @@ import { authRoutes, dispatchMail } from './cloudflare/auth.js';
 import { profileRoutes } from './cloudflare/profiles.js';
 import { communicationRoutes, dispatchDaily, dispatchPush } from './cloudflare/communication.js';
 import { mediaRoutes } from './cloudflare/media.js';
+import { cleanupCaptureUploads } from './cloudflare/capture-uploads.js';
 import { dateRoutes } from './cloudflare/dates.js';
 import { adminRoutes } from './cloudflare/admin.js';
 export const app = new Hono<AppEnv>();
@@ -42,6 +43,7 @@ app.get('/health/ready', async (c) => {
         await c.env.DB.prepare('SELECT key FROM service_state LIMIT 1').first();
         await c.env.DB.prepare('SELECT object_key FROM image_objects LIMIT 1').first();
         await c.env.DB.prepare('SELECT appwrite_id FROM users LIMIT 1').first();
+        await c.env.DB.prepare('SELECT id FROM capture_uploads LIMIT 1').first();
         if (usesAppwrite(c.env) && !appwriteConfigured(c.env)) return c.json({ ok: false, database: 'ready', error: 'appwrite_not_configured' }, 503);
         if (!configured(c.env))
             return c.json({ ok: false, database: 'ready', error: 'server_auth_not_configured' }, 503);
@@ -83,6 +85,7 @@ export async function maintenance(env: Env) {
         env.DB.prepare('DELETE FROM messages WHERE deleted_at<?').bind(new Date(Date.now() - 30 * 86400000).toISOString()),
         env.DB.prepare('DELETE FROM audit_logs WHERE created_at<?').bind(new Date(Date.now() - 90 * 86400000).toISOString()),
     ]);
+    await cleanupCaptureUploads(env);
     await dispatchAccountDeletions(env);
     await dispatchDaily(env);
     await dispatchMail(env);

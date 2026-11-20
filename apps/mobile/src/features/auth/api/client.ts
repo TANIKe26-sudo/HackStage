@@ -25,6 +25,10 @@ export class ApiError extends Error {
 
 const errorMessages: Record<string, string> = {
   appwrite_not_configured: 'Appwriteの接続設定またはAPIキーの権限を確認してください。',
+  capture_preparation_required: '写真の保存方式が更新されました。Expo Goを再読み込みして、もう一度保存してください。',
+  capture_upload_incomplete: '写真の送信が完了していません。もう一度保存してください。',
+  capture_upload_not_found: '写真の送信期限が切れました。もう一度保存してください。',
+  classification_comparison_required: 'AI推定が更新されました。Expo Goを再読み込みしてからお試しください。',
   auth_service_unavailable: '認証サービスに接続できませんでした。しばらくしてからお試しください。',
   email_verification_required: 'メールアドレスの確認を完了してください。',
   auth_migration_required: '既存アカウントの移行を完了できませんでした。運営にお問い合わせください。',

@@ -1,4 +1,5 @@
 import { apiRequest } from '../api/client';
+import { comparisonSheet } from '../api/comparisonSheet';
 import { classificationLabels, classificationReason, type ClassificationResult } from '../api/classification';
 import { useAuth } from '../context/AuthContext';
 import { captureRegions } from '../captureRegions';
@@ -109,8 +110,20 @@ export default function InAppCameraScreen() {
     const controller = new AbortController(); classificationRequest.current = controller;
     setClassifying(true); setErrorMessage(null); setClassification(null);
     try {
+      const references = await apiRequest<{ present: string; absent: string }>('/api/classifications/throat/references', token, { signal: controller.signal });
+      // Let the activity indicator render before doing the local comparison.
+      await new Promise(resolve => setTimeout(resolve, 0));
+      if (controller.signal.aborted) return;
+      const sheet = comparisonSheet([references.present, references.absent, captured.previewDataUrl]);
+      const rendered = await ImageManipulator.manipulate(sheet).renderAsync();
+      let comparisonBase64: string | undefined;
+      for (const compress of [0.65, 0.45, 0.25]) {
+        const comparison = await rendered.saveAsync({ format: SaveFormat.JPEG, compress, base64: true });
+        if (comparison.base64 && comparison.base64.length <= Math.floor(128 * 1024 / 3) * 4) { comparisonBase64 = comparison.base64; break; }
+      }
+      if (!comparisonBase64) throw new Error('比較画像を準備できませんでした。');
       const result = await apiRequest<ClassificationResult>('/api/classifications/throat', token, { method: 'POST', signal: controller.signal,
-        body: JSON.stringify({ dataUrl: captured.previewDataUrl, consent: true }) });
+        body: JSON.stringify({ comparisonDataUrl: `data:image/jpeg;base64,${comparisonBase64}`, referenceVersion: 'v1', consent: true }) });
       if (!controller.signal.aborted) setClassification(result);
     } catch (error) {
       if (!controller.signal.aborted) setErrorMessage(error instanceof Error ? error.message : '推定できませんでした。');

@@ -1,4 +1,5 @@
 import { classifyNeck } from './classification.js';
+import { preparedCaptureRoutes } from './capture-uploads.js';
 import { imageStore } from './image-store.js';
 import { Buffer } from 'node:buffer';
 import * as jpeg from 'jpeg-js';
@@ -119,7 +120,9 @@ export async function mayView(c: Ctx, capture: Row) {
         fail(403, 'consent_required');
 }
 export function mediaRoutes(app: App) {
+    preparedCaptureRoutes(app, regions);
     app.post('/api/captures', async (c) => {
+        if (c.env.APP_ENV === 'production') fail(400, 'capture_preparation_required');
         await limited(c, 'posting');
         await rate(c, 'capture', c.get('userId'), 12, 3600);
         const body = await input(c), decoded = decode(body.dataUrl), boxes = regions(body.regions), group = id(), original = `${c.get('userId')}/originals/${group}`, time = now(), created: {

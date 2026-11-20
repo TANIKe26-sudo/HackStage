@@ -72,13 +72,20 @@ Cloudflare版が開発対象です。`npm run dev:api`もCloudflare版を起動�
 
 ## 画像
 
-`POST /api/captures`は`dataUrl`と任意の`regions`を受け取ります。サーバーが全体画像をJPEGへ圧縮して非公開のD1へ保存し、5段階の切り出し画像を生成します。1画像は最大1,800,000バイトです。画像は32KiBずつのBLOBとしてimage_chunksへ保存し、image_objectsで管理します。無料D1はDB全体500MBのため、少人数の展示向けです。`regions`は0〜4段階の入れ子になった5個の`{x,y,width,height}`（0〜1の比率）です。指定がない場合は固定の撮影フレーム用領域を使います。これは顔・首の自動検出ではないため、実写で撮影位置を合わせ、公開前に段階0の画像を確認してください。モバイルは送信前に長辺1280ピクセルへ縮小します。サーバーは250万画素を上限にします。
+Workers FreeのCPU上限は1リクエスト10msのため、写真の縮小・5段階の切り出し・JPEG圧縮はExpo Go内で実行します。モバイルは長辺720ピクセル・各段階128KiB以下に調整します。撮影フレームの`regions`は0〜4段階の入れ子になった5個の`{x,y,width,height}`（0〜1の比率）です。顔・首の自動検出ではないため、公開前に段階0のプレビューを確認してください。
+
+1. `POST /api/capture-uploads`へ`width`・`height`・`regions`を送り、`uploadId`を取得します。
+2. `PUT /api/capture-uploads/:uploadId/stages/:stage`へ切り出し済みJPEGの`dataUrl`を1枚ずつ送ります。APIはサイズ・JPEGフレーム・申告寸法との整合を確認し、画素のデコードや再圧縮はしません。
+3. `POST /api/capture-uploads/:uploadId/complete`で5枚の存在を確認し、全段階をまとめて公開対象にします。完了前の画像は画像APIから取得できません。
+4. 中断時は`DELETE /api/capture-uploads/:uploadId`で削除します。30分の期限後は定期処理でも破棄します。退会時は下書きも削除します。
+
+画像は非公開のD1の`image_objects`・`image_chunks`に32KiBずつ保存します。全体像は段階4の画像を参照し、追加の全体画像は保存しません。従来の1画像1,800,000バイト制限は既存画像の保存層に残ります。旧`POST /api/captures`のサーバー切り出しはローカル互換用で、本番では`capture_preparation_required`を返します。写真データの送信元や切り出し内容をサーバーだけで保証するものではなく、アプリ内カメラと公開前確認を併用します。
 
 `GET /api/profiles/:id/captures`で閲覧できる画像IDを取得し、`GET /api/captures/:id/image`で必要な段階だけを取得します。原画像の取得APIは公開しません。取得ごとにブロック・公開同意・達成段階・期限を確認し、`no-store`で配信します。旧版で保存された画像は公開範囲が不明なため本人だけ閲覧可能です。再撮影・再投稿すると段階画像が生成されます。
 
 `DELETE /api/captures/:id`は同じ撮影の全段階と原画像を削除します。`GET /api/captures/:id/access-history`は所有者向けの閲覧履歴です。
 
-`POST /api/classifications/throat`は撮影した首周りのプレビュー、`POST /api/captures/:id/classification`は所有する切り出し画像を推定します。`consent:true`が必要です。非公開のD1画像テーブルに保存した参考例2枚との比較で `present/absent/pending` を返し、プロフィールへの適用は利用者の確認後に行います。AIや参考画像の未設定・モデル規約の未同意は503です。[準備・起動・検証手順](throat-classification.md)を参照してください。
+AI推定では、認証済みの`GET /api/classifications/throat/references`から参考例2枚を取得します（`private, no-store`）。利用者が同意したときだけ、スマホ上で左から参考例「あり」・「なし」・撮影プレビューの1184×512比較画像を作り、`POST /api/classifications/throat`へ`comparisonDataUrl`・`referenceVersion:"v1"`・`consent:true`を送ります。比較画像は各128KiB以下で、保存せずWorkers AIへ渡します。APIは`present/absent/pending`の候補を返し、適用は利用者の確認後に行います。クライアント入力を信用して性別判定・本人確認・公開権限の解放を行うことはありません。従来の`dataUrl`方式と`POST /api/captures/:id/classification`のサーバー合成はローカル互換用で、本番では`classification_comparison_required`を返します。AIや参考画像の未設定・モデル規約の未同意は503です。[準備・起動・検証手順](throat-classification.md)も参照してください。
 
 ## デート予定・プライバシー
 

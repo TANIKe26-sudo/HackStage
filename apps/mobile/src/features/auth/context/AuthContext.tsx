@@ -1,4 +1,4 @@
-import { captureRegions } from '../captureRegions';
+import { uploadProfilePhoto } from '../api/photoUpload';
 import * as SecureStore from 'expo-secure-store';
 import { createContext, useContext, useEffect, useState, type PropsWithChildren } from 'react';
 import { Platform } from 'react-native';
@@ -23,7 +23,7 @@ type AuthContextValue = {
   profile: AuthProfile | null;
   createAccount: (email: string, password: string) => Promise<AuthProfile | null>;
   logIn: (email: string, password: string) => Promise<AuthProfile | null>;
-  saveProfile: (profile: ProfileInput, photoDataUrl?: string | null) => Promise<void>;
+  saveProfile: (profile: ProfileInput, photoDataUrl?: string | null, photoUri?: string | null) => Promise<void>;
   logOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
@@ -88,14 +88,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return current.profile;
   };
 
-  const saveProfile = async (input: ProfileInput, photoDataUrl?: string | null) => {
+  const saveProfile = async (input: ProfileInput, photoDataUrl?: string | null, photoUri?: string | null) => {
     if (!token) throw new Error('ログイン情報がありません。もう一度ログインしてください。');
 
     if (photoDataUrl) {
-      await apiRequest('/api/captures', token, {
-        method: 'POST',
-        body: JSON.stringify({ dataUrl: photoDataUrl, regions: captureRegions }),
-      });
+      await uploadProfilePhoto(photoUri || photoDataUrl, token);
     }
 
     await apiRequest('/api/profile', token, { method: 'PATCH', body: JSON.stringify(input) });
