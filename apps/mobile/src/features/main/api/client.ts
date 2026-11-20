@@ -68,7 +68,7 @@ export function useMainApi() {
       blockUser: (userId: string) => post('/api/blocks', { userId }),
       daily: (signal?: AbortSignal) => get<Daily>('/api/daily', signal),
       matchDaily: (id: string, signal?: AbortSignal) => get<MatchDaily>(`/api/matches/${encodeURIComponent(id)}/daily`, signal),
-      answer: (topicId: string, answer: string) => post('/api/daily/answers', { topicId, answer }),
+      answer: (topicId: string, answer: string, matchId: string) => post<{ ok: boolean; sent: boolean }>('/api/daily/answers', { topicId, answer, matchId }),
       grant: (id: string, stage: number, consent: boolean) => post(`/api/matches/${encodeURIComponent(id)}/profile-stage`, { stage, consent }),
     };
   }, [token]);

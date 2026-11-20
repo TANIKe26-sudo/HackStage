@@ -39,9 +39,9 @@ function ConnectedDaily({ conversationId, previousStage }: { conversationId: str
     if (!topic || !answer.trim() || sendingRef.current) return;
     sendingRef.current = true; setSending(true);
     try {
-      await api.answer(topic.id, answer);
+      const result = await api.answer(topic.id, answer, conversationId);
       void resource.refresh();
-      Alert.alert('回答を保存しました');
+      Alert.alert(result.sent ? '回答を保存してトークに送信しました' : 'この回答はトークに送信済みです');
     } catch (error) {
       Alert.alert('保存できませんでした', error instanceof Error ? error.message : '再度お試しください。');
     } finally { sendingRef.current = false; setSending(false); }

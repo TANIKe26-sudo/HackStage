@@ -96,7 +96,7 @@ try {
     await sql(`INSERT INTO daily_topics(id,topic_date,title,prompt,created_by,created_at) VALUES('${ownedTopic}','${date}','接続テスト','今日はどんな日？','integration-test','${new Date().toISOString()}')`);
     daily = await request('/api/daily', a.token);
   }
-  await request('/api/daily/answers', a.token, 'POST', { topicId: daily.topic.id, answer: 'テスト回答' });
+  await request('/api/daily/answers', a.token, 'POST', { topicId: daily.topic.id, answer: 'テスト回答', matchId: match.matchId });
   const tasks = await request(`${path}/daily`, a.token);
   assert(tasks.tasks['answer-topic'] && tasks.tasks['receive-reply'] && tasks.tasks['ask-question']);
   checked('daily answer and conversation tasks persist');

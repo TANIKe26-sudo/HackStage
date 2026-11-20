@@ -100,7 +100,7 @@ export function registerMobileRoutes(app: App) {
         const topic = await dailyTopic(c.env);
         const answer = topic ? await c.env.DB.prepare('SELECT answer FROM daily_answers WHERE user_id=? AND topic_id=?').bind(me, topic.id).first() : null;
         const otherAnswer = topic ? await c.env.DB.prepare('SELECT 1 FROM daily_answers WHERE user_id=? AND topic_id=?').bind(match.other, topic.id).first() : null;
-        const messages = await c.env.DB.prepare(`SELECT sender_id,body FROM messages WHERE match_id=? AND deleted_at IS NULL AND date(created_at,'+9 hours')=?`).bind(match.id, today()).all<Row>();
+        const messages = await c.env.DB.prepare(`SELECT sender_id,body FROM messages WHERE match_id=? AND deleted_at IS NULL AND daily_topic_id IS NULL AND date(created_at,'+9 hours')=?`).bind(match.id, today()).all<Row>();
         const progress = await stageProgress(c.env, match.id);
         return c.json({ topic, answer, otherAnswered: !!otherAnswer, progress: { ...progress, sharedAnswers: progress.sharedDaily }, tasks: {
           'answer-topic': !!answer, 'receive-reply': messages.results.some(m => m.sender_id !== me),
