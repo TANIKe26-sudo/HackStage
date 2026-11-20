@@ -47,7 +47,10 @@ Cloudflare版が開発対象です。`npm run dev:api`もCloudflare版を起動�
 - `GET/PUT/PATCH /api/preferences/discovery`：`acceptedPurposes`、`acceptedPaces`、`preferredClassification`、`minAge`、`maxAge`、`locationRange`。地域範囲は `null`（未設定）、`same_prefecture`、`same_region`、`anywhere`。年齢・目的など双方の条件を照合します。
 - `GET /api/discover?limit=10`：表示累計の少ない相手を優先し、同じ相手への再紹介は24時間空けます。地域範囲が同じ都道府県・同じ地方の場合は、地域を公開していて指定条件に合う相手だけを候補にします。未設定・どこでもOKなら地域非公開の相手も含めます。同じ地方は北海道、東北、関東、中部、関西、中国、四国、九州・沖縄の8区分です。ブロック・非表示連絡先・利用制限も除外します。有料優先表示はありません。
 - `POST /api/likes`：`toUserId`。相互いいねだけでマッチし、同じいいねによる通知・マッチの重複を防ぎます。
+- `GET /api/swipes/last`：過去のスワイプ履歴から、マッチ済み・ブロック・知り合い非表示・利用停止・紹介制限の相手を除外し、最後の未マッチ候補を返します。画面の開き直し・再ログイン後もDBの履歴から復元します。右スワイプは`POST /api/swipes/undo`（`toUserId`）でこの候補の操作を取り消して戻ります。戻せる候補がなければ何もしません。既存のマッチは変更しません。
 - `GET /api/likes/received`、`GET /api/matches`：受信いいね・マッチ一覧。
+
+候補画面の操作はiOS・Android共通です。右スワイプは前のプロフィールへ戻り、戻る相手がいなければ何もしません。左スワイプはスキップです。いいねは♥ボタンから明示的に送ります。候補終了画面の右スワイプも同じ「戻る」操作です。
 
 一覧は原則`limit`（1〜100、紹介は最大30）と`offset`に対応します。
 

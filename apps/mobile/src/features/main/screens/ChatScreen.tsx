@@ -52,6 +52,7 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
   const canSubmitReport = !!reportReason.trim() && !safetyActionBusy;
   const sendingRef = useRef(false);
   const messageList = useRef<ScrollViewInstance | null>(null);
+  const composerFocused = useRef(false);
   const messages = Array.from(new Map([...(older?.messages ?? []), ...(resource.data?.page.messages ?? [])].map(m => [m.id, m])).values()).sort((a, b) => a.sequence - b.sequence);
   const latestSequence = resource.data?.page.messages.at(-1)?.sequence;
   const nextBefore = older ? older.nextBefore : resource.data?.page.nextBefore;
@@ -147,12 +148,14 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
 
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        enabled={!showReportDialog}
-        style={styles.screen}
-      >
+    <KeyboardAvoidingView
+      behavior="padding"
+      keyboardVerticalOffset={0}
+      enabled={!showReportDialog}
+      style={styles.safeArea}
+    >
+      <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
+      <View style={styles.screen}>
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
@@ -244,6 +247,9 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
 
         <ScrollView
           ref={messageList}
+          onLayout={() => {
+            if (composerFocused.current) messageList.current?.scrollToEnd({ animated: false });
+          }}
           style={styles.messageList}
           contentContainerStyle={styles.messageContent}
           keyboardShouldPersistTaps="handled"
@@ -297,6 +303,11 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
             maxLength={2000}
             value={draft}
             onChangeText={setDraft}
+            onFocus={() => {
+              composerFocused.current = true;
+              messageList.current?.scrollToEnd({ animated: true });
+            }}
+            onBlur={() => { composerFocused.current = false; }}
             placeholder="メッセージを入力"
             placeholderTextColor={colors.mutedText}
             style={styles.messageInput}
@@ -316,7 +327,7 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
             <Ionicons name="send" size={18} color={sending || !draft.trim() ? colors.primary : colors.white} />
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </View>
       <Modal
         visible={showReportDialog}
         transparent
@@ -368,7 +379,8 @@ function ConnectedChat({ conversationId }: { conversationId: string }) {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </SafeAreaView>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 

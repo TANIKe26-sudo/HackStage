@@ -14,10 +14,10 @@ import { profileCard, useMainApi, type PublicProfile } from '../api/client';
 import { useResource } from '../api/useResource';
 import { RequestState } from '../components/RequestState';
 import { hobbyGenres, type HobbyGenreId } from '../data/hobbyGenres';
+import { candidateSwipeAction } from '../candidateSwipeAction';
 
 type SwipeDirection = 'like' | 'pass';
 
-const swipeThreshold = 100;
 // Event-only lock keyed by the stable animation value; it is never read during render.
 const activeSwipes = new WeakSet<Animated.ValueXY>();
 
@@ -34,9 +34,13 @@ export default function CandidateFeedScreen({
   const api = useMainApi();
   const loadCandidates = useCallback((signal: AbortSignal) => api.discover(signal, hobbyId), [api, hobbyId]);
   const resource = useResource(loadCandidates);
+  const loadLastSwipe = useCallback((signal: AbortSignal) => api.lastSwipe(signal), [api]);
+  const swipeHistory = useResource(loadLastSwipe);
+  const refreshLastSwipe = swipeHistory.refresh;
+  const lastSwipe = swipeHistory.data?.lastSwipe;
+  const previousProfile = swipeHistory.data?.profile;
   const [decided, setDecided] = useState<string[]>([]);
   const [restoredCandidate, setRestoredCandidate] = useState<PublicProfile | null>(null);
-  const [lastSwipe, setLastSwipe] = useState<{ candidateId: string; undoable: boolean } | null>(null);
   const [isSwiping, setIsSwiping] = useState(false);
   const [isUndoing, setIsUndoing] = useState(false);
   const [pan] = useState(() => new Animated.ValueXY());
@@ -64,7 +68,7 @@ export default function CandidateFeedScreen({
             pan.setValue({ x: 0, y: 0 });
             setDecided(current => current.includes(profile.id) ? current : [...current, profile.id]);
             setRestoredCandidate(null);
-            setLastSwipe({ candidateId: profile.id, undoable: !matched });
+            void refreshLastSwipe();
             setIsSwiping(false);
             activeSwipes.delete(pan);
           });
@@ -76,11 +80,11 @@ export default function CandidateFeedScreen({
         }
       })();
     },
-    [api, pan, profile, width],
+    [api, pan, profile, width, refreshLastSwipe],
   );
 
   const undoLastSwipe = useCallback(() => {
-    if (activeSwipes.has(pan) || !lastSwipe?.undoable) return;
+    if (activeSwipes.has(pan) || swipeHistory.loading || !lastSwipe?.undoable) return;
 
     activeSwipes.add(pan);
     setIsUndoing(true);
@@ -89,34 +93,42 @@ export default function CandidateFeedScreen({
         const result = await api.undoSwipe(lastSwipe.candidateId);
         setDecided(current => current.filter(id => id !== result.candidateId));
         setRestoredCandidate(result.profile);
-        setLastSwipe(null);
         pan.setValue({ x: 0, y: 0 });
       } catch (error) {
         Alert.alert('戻せませんでした', error instanceof Error ? error.message : '再度お試しください。');
       } finally {
+        void refreshLastSwipe();
         setIsUndoing(false);
         activeSwipes.delete(pan);
       }
     })();
-  }, [api, lastSwipe, pan]);
+  }, [api, lastSwipe, pan, refreshLastSwipe, swipeHistory.loading]);
+
+  const returnToPreviousCandidate = useCallback(() => {
+    if (activeSwipes.has(pan) || swipeHistory.loading || !previousProfile) return;
+    if (previousProfile.user_id === profile?.id) return;
+    if (lastSwipe?.undoable) undoLastSwipe();
+  }, [lastSwipe, pan, previousProfile, profile?.id, swipeHistory.loading, undoLastSwipe]);
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_event, gesture) =>
+          !activeSwipes.has(pan) &&
           Math.abs(gesture.dx) > 10 &&
           Math.abs(gesture.dx) > Math.abs(gesture.dy),
         onPanResponderMove: (_event, gesture) => {
+          if (activeSwipes.has(pan)) return;
           pan.setValue({ x: gesture.dx, y: gesture.dy * 0.12 });
         },
         onPanResponderRelease: (_event, gesture) => {
-          const isFastSwipe = Math.abs(gesture.dx) > 35 && Math.abs(gesture.vx) > 0.7;
-          if (gesture.dx > swipeThreshold || (isFastSwipe && gesture.dx > 0)) {
-            swipeOut('like');
-          } else if (gesture.dx < -swipeThreshold || (isFastSwipe && gesture.dx < 0)) {
+          const canGoBack = !swipeHistory.loading && Boolean(lastSwipe?.undoable && previousProfile && previousProfile.user_id !== profile?.id);
+          const action = candidateSwipeAction(gesture, canGoBack);
+          if (action === 'pass') {
             swipeOut('pass');
           } else {
+            if (action === 'back') returnToPreviousCandidate();
             Animated.spring(pan, {
               toValue: { x: 0, y: 0 },
               useNativeDriver: true,
@@ -130,7 +142,7 @@ export default function CandidateFeedScreen({
           }).start();
         },
       }),
-    [pan, swipeOut],
+    [lastSwipe?.undoable, pan, previousProfile, profile?.id, returnToPreviousCandidate, swipeHistory.loading, swipeOut],
   );
 
   const rotation = pan.x.interpolate({
@@ -142,6 +154,7 @@ export default function CandidateFeedScreen({
   const refreshCandidates = () => {
     pan.setValue({ x: 0, y: 0 });
     void resource.refresh();
+    void refreshLastSwipe();
   };
 
   return (
@@ -164,7 +177,7 @@ export default function CandidateFeedScreen({
             </Text>
           </View>
           <View style={styles.headerActions}>
-            {resource.loading ? (
+            {resource.loading || swipeHistory.loading ? (
               <View style={styles.loadingSlot}>
                 <ActivityIndicator size="small" color={colors.mutedText} accessibilityLabel="更新中" />
               </View>
@@ -181,7 +194,7 @@ export default function CandidateFeedScreen({
         </View>
 
         <View style={styles.main}>
-          <RequestState loading={false} error={resource.error} onRetry={() => void resource.refresh()} />
+          <RequestState loading={false} error={resource.error ?? (!profile ? swipeHistory.error : undefined)} onRetry={refreshCandidates} />
           {profile ? (
             <View style={styles.cardSlot}>
               <Animated.View
@@ -201,14 +214,20 @@ export default function CandidateFeedScreen({
               </Animated.View>
             </View>
           ) : (
-            !resource.loading && !resource.error ? <DiscoverEmptyState onRestart={refreshCandidates} /> : null
+            !resource.loading && !resource.error ? (
+              <DiscoverEmptyState
+                onRestart={refreshCandidates}
+                onGoBack={lastSwipe?.undoable && previousProfile ? returnToPreviousCandidate : undefined}
+                backDisabled={isUndoing || isSwiping || swipeHistory.loading}
+              />
+            ) : null
           )}
           <DiscoverSwipeActions
             onPass={() => swipeOut('pass')}
             onLike={() => swipeOut('like')}
             onUndo={undoLastSwipe}
-            canUndo={Boolean(lastSwipe?.undoable)}
-            undoDisabled={isUndoing || isSwiping}
+            canUndo={Boolean(profile && lastSwipe?.undoable)}
+            undoDisabled={isUndoing || isSwiping || swipeHistory.loading}
             showSwipeButtons={Boolean(profile)}
           />
         </View>
